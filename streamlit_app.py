@@ -308,6 +308,17 @@ def header_section():
     st.title("XploreMe@Sports - Badminton 🏸")
     st.markdown("Manage your badminton matches, teams, and stats!")
 
+def footer_section():
+    """App Footer section"""
+    st.markdown(
+        """
+        <div style='position: fixed; bottom: 10px; width: 100%; text-align: center; font-size: 14px; color: gray;'>
+            Built With ❤️ by <b>XploreMe@Sports</b>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 def player_management_section():
     """Player management section"""
     st.header("Player Management")
