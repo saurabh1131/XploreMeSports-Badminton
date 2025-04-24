@@ -311,11 +311,22 @@ def header_section():
 def footer_section():
     """App Footer section"""
     st.markdown(
-"""
-<div style='position: fixed; bottom: 10px; width: 100%; text-align: center; font-size: 14px; color: gray;'>
-Built by <b>XploreMe@Sports</b> with 🧡
-</div>
-""",
+        """
+        <div id="footer" style='position: fixed; bottom: 10px; font-size: 14px; color: gray; text-align: center;'>
+            Built by <b>XploreMe@Sports</b> with 🧡
+        </div>
+        <script>
+            function adjustFooter() {
+                const sidebar = document.querySelector('[data-testid="stSidebar"]');
+                const sidebarWidth = sidebar ? sidebar.offsetWidth : 0;
+                const footer = document.getElementById('footer');
+                footer.style.left = sidebarWidth + 'px';
+                footer.style.right = '20px';
+            }
+            adjustFooter();
+            window.addEventListener('resize', adjustFooter);
+        </script>
+        """,
         unsafe_allow_html=True
     )
 
