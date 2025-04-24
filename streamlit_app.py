@@ -823,9 +823,9 @@ def process_query(user_query):
 {badminton_data}
 
 **Last 5 User Questions**:
-{last_five_questions}
+{last_questions}
 
-**User Query**:
+**User's Current Question**:
 {user_ask}
 
 Give your answer in a clear, buddy-like way, using headings or bullet points if needed, and toss in some fun where it fits!""")
@@ -834,12 +834,13 @@ Give your answer in a clear, buddy-like way, using headings or bullet points if 
         model = ChatGoogleGenerativeAI(
             model=st.session_state.llm_model, 
             google_api_key=st.session_state.api_key, 
-            temperature=0.5
+            temperature=0.25
         )
         
-        # Format the prompt with data and query
+        # Format the prompt with data, last 5 questions, and current query
         prompt = prompt_template.format(
             badminton_data=json.dumps(badminton_data, indent=2),
+            last_questions="\n".join(last_five_questions) if last_five_questions else "No previous questions.",
             user_ask=user_query
         )
         
