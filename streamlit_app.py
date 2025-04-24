@@ -9,6 +9,7 @@ import json
 import os
 from collections import defaultdict
 import hashlib
+import pytz
 
 # Set page configuration
 st.set_page_config(
@@ -163,7 +164,10 @@ def generate_random_teams(players, previous_teams=None):
 def record_match_result(team_a, team_b, score_a, score_b, notes=""):
     """Record match results and update player statistics"""
     match_id = str(uuid.uuid4())
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Get current time in IST
+    ist = pytz.timezone('Asia/Kolkata')
+    timestamp = datetime.datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S")
     
     # Determine winning team
     winning_team = "A" if score_a > score_b else "B"

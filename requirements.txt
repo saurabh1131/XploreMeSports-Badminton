@@ -1,3 +1,4 @@
 streamlit
 seaborn
 matplotlib
+pytz==2022.1
