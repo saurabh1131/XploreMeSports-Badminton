@@ -42,6 +42,9 @@ if 'waiting_queue' not in st.session_state:
 if 'player_rotation_history' not in st.session_state:
     st.session_state.player_rotation_history = {}
 
+if 'data_updated' not in st.session_state:
+    st.session_state.data_updated = False
+
 # Admin authentication variables
 if 'admin_password_hash' not in st.session_state:
     # Default admin password is "admin123" - should be changed in production
@@ -76,6 +79,8 @@ def save_data():
     }
     with open('badminton_data.json', 'w') as f:
         json.dump(data, f)
+    # Set flag to indicate data was updated
+    st.session_state.data_updated = True
 
 def get_player_by_id(player_id):
     """Get player object by ID"""
@@ -86,6 +91,28 @@ def get_player_by_id(player_id):
         if player["id"] == player_id:
             return player
     return None
+
+def update_player_stats(player_id, points, is_winner):
+    """Update a player's statistics by ID"""
+    # First check predefined players
+    for i, player in enumerate(st.session_state.predefined_players):
+        if player["id"] == player_id:
+            st.session_state.predefined_players[i]["games_played"] += 1
+            st.session_state.predefined_players[i]["points_scored"] += points
+            if is_winner:
+                st.session_state.predefined_players[i]["wins"] += 1
+            return True
+    
+    # Then check temporary players
+    for i, player in enumerate(st.session_state.temp_players):
+        if player["id"] == player_id:
+            st.session_state.temp_players[i]["games_played"] += 1
+            st.session_state.temp_players[i]["points_scored"] += points
+            if is_winner:
+                st.session_state.temp_players[i]["wins"] += 1
+            return True
+    
+    return False
 
 def get_all_available_players():
     """Get list of all available players (predefined + temporary)"""
@@ -141,18 +168,12 @@ def record_match_result(team_a, team_b, score_a, score_b, notes=""):
     # Determine winning team
     winning_team = "A" if score_a > score_b else "B"
     
-    # Update player statistics
+    # Update player statistics using dedicated function
     for player in team_a:
-        player["games_played"] += 1
-        player["points_scored"] += score_a
-        if winning_team == "A":
-            player["wins"] += 1
+        update_player_stats(player["id"], score_a, winning_team == "A")
     
     for player in team_b:
-        player["games_played"] += 1
-        player["points_scored"] += score_b
-        if winning_team == "B":
-            player["wins"] += 1
+        update_player_stats(player["id"], score_b, winning_team == "B")
     
     # Create match record
     match_record = {
@@ -451,7 +472,8 @@ def match_recording_section():
                 match_notes
             )
             st.success("Match recorded successfully!")
-            save_data()
+            # Trigger rerun to refresh the UI with updated stats
+            st.rerun()
 
 def statistics_section():
     """Statistics and analytics section"""
@@ -643,6 +665,11 @@ def main():
     """Main app"""
     # Load data
     load_data()
+    
+    # Check if the app needs to trigger a rerun based on data updates
+    if st.session_state.data_updated:
+        st.session_state.data_updated = False
+        st.rerun()
     
     # Admin authentication (shown in sidebar)
     admin_authentication()
