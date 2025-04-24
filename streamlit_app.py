@@ -66,7 +66,7 @@ if 'chat_history' not in st.session_state:
 
 if 'api_key_configured' not in st.session_state:
     st.session_state.api_key = "AIzaSyCvR-EJDDqU881df2CrjgDaQjejttoARXw"
-    st.session_state.llm_model = "gemini-2.0-flash-lite"
+    st.session_state.llm_model = "gemini-2.0-flash"  # "gemini-2.0-flash-lite"
     st.session_state.api_key_configured = True
 
 # Utility functions
