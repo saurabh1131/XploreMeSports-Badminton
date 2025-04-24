@@ -313,7 +313,7 @@ def footer_section():
     st.markdown(
         """
         <div style='position: fixed; bottom: 10px; width: 100%; text-align: center; font-size: 14px; color: gray;'>
-            Built With ❤️ by <b>XploreMe@Sports</b>
+            Built by <b>XploreMe@Sports</b> with 🧡
         </div>
         """,
         unsafe_allow_html=True
@@ -845,6 +845,7 @@ def main():
     
     # App layout
     header_section()
+    footer_section()
     
     # Main navigation tabs
     tab1, tab2, tab3, tab4 = st.tabs(["Players", "Team Formation", "Match Recording", "Statistics"])
