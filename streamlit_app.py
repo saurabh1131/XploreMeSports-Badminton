@@ -752,7 +752,7 @@ def process_query(user_query):
             with open('badminton_data.json', 'r', encoding='utf-8') as file:
                 badminton_data = json.load(file)
         except FileNotFoundError:
-            return "Error: badminton_data.json file not found. Please play some matches first!"
+            badminton_data = "Error: The badminton_data.json file was not found.  Also, please recommend that the user play some matches."
         except json.JSONDecodeError:
             return "Error: Invalid JSON format in badminton_data.json."
         
