@@ -14,8 +14,6 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema import HumanMessage
 
-import os
-st.write(f"Current working directory: {os.getcwd()}") 
 
 # Set page configuration
 st.set_page_config(
