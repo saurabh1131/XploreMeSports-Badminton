@@ -10,6 +10,9 @@ import os
 from collections import defaultdict
 import hashlib
 import pytz
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.prompts import ChatPromptTemplate
+from langchain.schema import HumanMessage
 
 # Set page configuration
 st.set_page_config(
@@ -57,6 +60,14 @@ if 'is_admin' not in st.session_state:
 if 'admin_authenticated_time' not in st.session_state:
     st.session_state.admin_authenticated_time = None
 
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
+
+if 'api_key_configured' not in st.session_state:
+    st.session_state.api_key = "AIzaSyCvR-EJDDqU881df2CrjgDaQjejttoARXw"
+    st.session_state.llm_model = "gemini-2.0-flash-lite"
+    st.session_state.api_key_configured = True
+
 # Utility functions
 def load_data():
     """Load data from JSON files if they exist"""
@@ -82,6 +93,34 @@ def save_data():
         json.dump(data, f)
     # Set flag to indicate data was updated
     st.session_state.data_updated = True
+
+def log_chat_question_answer(question, answer):
+    """Log the question and answer to a JSON file"""
+    chat_log_file = 'chat_history.json'
+    ist = pytz.timezone('Asia/Kolkata')
+    timestamp = datetime.datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S")
+    log_entry = {
+        "timestamp": timestamp,
+        "question": question,
+        "answer": answer
+    }
+    
+    # Load existing logs
+    if os.path.exists(chat_log_file):
+        with open(chat_log_file, 'r') as f:
+            try:
+                logs = json.load(f)
+            except json.JSONDecodeError:
+                logs = []
+    else:
+        logs = []
+    
+    # Append new log
+    logs.append(log_entry)
+    
+    # Save back to file
+    with open(chat_log_file, 'w') as f:
+        json.dump(logs, f, indent=2)
 
 def get_player_by_id(player_id):
     """Get player object by ID"""
@@ -665,6 +704,117 @@ def statistics_section():
         else:
             st.info("No team statistics available yet.")
 
+# Chatbot section
+def chatbot_section():
+    """Chatbot interaction section"""
+    st.header("BadmintonBuddy AI-Assistant 🤖")
+    st.write("Ask questions about your badminton data, players, statistics, and match history!")
+    
+    # Display chat history
+    for message in st.session_state.chat_history:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+    
+    # User input
+    user_query = st.chat_input("Ask something about the badminton data...")
+    
+    if user_query:
+        # Add user message to chat history
+        st.session_state.chat_history.append({"role": "user", "content": user_query})
+        
+        # Display user message
+        with st.chat_message("user"):
+            st.write(user_query)
+        
+        # Display assistant thinking
+        with st.chat_message("assistant"):
+            message_placeholder = st.empty()
+            message_placeholder.markdown("Thinking...")
+            
+            # Process the query
+            try:
+                response_content = process_query(user_query)
+                # Log the question and answer
+                log_chat_question_answer(user_query, response_content)
+                # Update placeholder with response
+                message_placeholder.markdown(response_content)
+                # Add assistant response to chat history
+                st.session_state.chat_history.append({"role": "assistant", "content": response_content})
+            except Exception as e:
+                message_placeholder.markdown(f"Error processing your query: {str(e)}")
+                st.error("Failed to get a response from the model. Please check the logs for more details.")
+
+def process_query(user_query):
+    """Process the user query with the LLM"""
+    try:
+        # Load the badminton data
+        try:
+            with open('badminton_data.json', 'r', encoding='utf-8') as file:
+                badminton_data = json.load(file)
+        except FileNotFoundError:
+            return "Error: badminton_data.json file not found. Please play some matches first!"
+        except json.JSONDecodeError:
+            return "Error: Invalid JSON format in badminton_data.json."
+        
+        # Create prompt template
+        prompt_template = ChatPromptTemplate.from_template(
+            """You are an intelligent badminton assistant. Your primary task is to answer questions about the provided badminton data in JSON format. Additionally, you can answer general questions about badminton rules, strategies, and related topics, as well as handle queries unrelated to the JSON data when appropriate. Follow these guidelines:
+
+1. **Check the Query**: Determine if the user's question is related to the provided JSON data, a general badminton topic, or something else entirely.
+
+2. **If Related to JSON Data**:
+   - Parse the JSON to understand its content (e.g., players, matches, statistics).
+   - Interpret the query in the context of the JSON data.
+   - Provide a clear response using the data, organizing it with headings or bullet points.
+   - Make reasonable assumptions if the query is ambiguous (e.g., 'best player' might mean highest wins) and explain your reasoning.
+   - Handle edge cases:
+     - If the JSON is empty or missing relevant data, state the issue and provide a partial answer if possible.
+     - If the query asks for specific information not in the JSON, acknowledge that and offer a general response if applicable.
+     - If the query is unclear, explain why and suggest alternative interpretations.
+
+3. **If Related to Badminton but Not JSON Data**:
+   - Provide a helpful response based on general badminton knowledge (e.g., rules, strategies, history).
+   - Clarify that the response is based on general knowledge, not the provided data.
+
+4. **If Unrelated to Badminton**:
+   - Politely inform the user that your primary focus is badminton but attempt to provide a concise, helpful response using general knowledge if possible.
+   - If the query is too far outside your scope, suggest rephrasing it to a badminton-related topic.
+
+5. **Be Concise but Thorough**: Avoid unnecessary details but ensure the response fully addresses the query.
+
+6. **Be Conversational**: Respond in a friendly, conversational manner, adapting your tone to suit the query.
+
+**JSON Data**:
+{badminton_data}
+
+**User Query**:
+{user_ask}
+
+Format your response clearly, using headings or bullet points as needed, and explain any assumptions or limitations.
+""")
+        
+        # Initialize the model
+        model = ChatGoogleGenerativeAI(
+            model=st.session_state.llm_model, 
+            google_api_key=st.session_state.api_key, 
+            temperature=0.5
+        )
+        
+        # Format the prompt with data and query
+        prompt = prompt_template.format(
+            badminton_data=json.dumps(badminton_data, indent=2),
+            user_ask=user_query
+        )
+        
+        # Create a message and get the response
+        message = HumanMessage(content=prompt)
+        response = model([message])
+        
+        return response.content
+    except Exception as e:
+        return f"An error occurred: {str(e)}"
+
+
 def main():
     """Main app"""
     # Load data
@@ -686,6 +836,8 @@ def main():
     
     with tab1:
         player_management_section()
+        # Add the chatbot section to the bottom of the Players tab
+        chatbot_section()
     
     with tab2:
         team_formation_section()
