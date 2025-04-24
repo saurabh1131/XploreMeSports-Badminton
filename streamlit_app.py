@@ -311,11 +311,11 @@ def header_section():
 def footer_section():
     """App Footer section"""
     st.markdown(
-        """
-        <div style='position: fixed; bottom: 10px; width: 100%; text-align: center; font-size: 14px; color: gray;'>
-            Built by <b>XploreMe@Sports</b> with 🧡
-        </div>
-        """,
+"""
+<div style='position: fixed; bottom: 10px; width: 100%; text-align: center; font-size: 14px; color: gray;'>
+Built by <b>XploreMe@Sports</b> with 🧡
+</div>
+""",
         unsafe_allow_html=True
     )
 
