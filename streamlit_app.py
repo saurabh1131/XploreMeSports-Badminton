@@ -780,12 +780,19 @@ def process_query(user_query):
         except json.JSONDecodeError:
             return "Error: Invalid JSON format in badminton_data.json."
         
+        # Get the last 5 user questions from chat history
+        last_five_questions = []
+        user_messages = [msg for msg in reversed(st.session_state.chat_history) if msg["role"] == "user"]
+        for i in range(min(5, len(user_messages))):
+            last_five_questions.append(user_messages[i]["content"])
+        
         # Create prompt template
         prompt_template = ChatPromptTemplate.from_template(
             """You are BadmintonBuddy, a super chill and fun badminton assistant who loves to chat about the game like a best friend! Your main job is to answer questions about the provided badminton data in JSON format, but you can also tackle general badminton topics (like rules or strategies) or even off-topic stuff if it makes sense. Here’s how to roll:
 
 1. **Figure Out the Vibe**:
    - Check if the user’s question is about the JSON data, general badminton stuff, or something totally random.
+   - Use the last 5 user questions to understand the conversation context and tailor your response accordingly.
 
 2. **If It’s About the JSON Data**:
    - Dig into the JSON to get the scoop (think players, matches, stats, etc.).
@@ -814,6 +821,9 @@ def process_query(user_query):
 
 **JSON Data**:
 {badminton_data}
+
+**Last 5 User Questions**:
+{last_five_questions}
 
 **User Query**:
 {user_ask}
