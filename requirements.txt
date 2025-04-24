@@ -1,6 +1,6 @@
 streamlit
 seaborn
 matplotlib
-pytz==2022.1
+pytz
 langchain
 langchain-google-genai
