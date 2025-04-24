@@ -1,7 +1,9 @@
-# XploreMe@Sports - Badminton 🏸
+<p align="center">
+  XploreMe@Sports - Badminton 🏸
+</p>
 
 <p align="center">
-  <img src="[https://cdn.pixabay.com/photo/2012/11/28/10/37/badminton-67640_1280.jpg](https://media.istockphoto.com/id/1033954336/photo/badminton-courts-with-players-competing.jpg)" alt="Badminton Court" width="200">
+  <img src="https://img.freepik.com/free-psd/badminton-template-design_23-2151491185.jpg" alt="Badminton Court" width="600">
 </p>
 
 Welcome to **XploreMe@Sports - Badminton**, an interactive web application built with Streamlit to manage badminton matches, teams, and player statistics. This app is designed to help badminton enthusiasts track their games, analyze performance, and have fun with a built-in AI chatbot, "BadmintonBuddy." Whether you're organizing a casual match or diving into stats, this app has you covered!
