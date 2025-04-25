@@ -92,6 +92,9 @@ if 'api_key_configured' not in st.session_state:
     st.session_state.llm_model = "gemini-2.0-flash"
     st.session_state.api_key_configured = True
 
+if 'match_type' not in st.session_state:
+    st.session_state.match_type = "doubles"  # Default to doubles
+
 # Super Admin password from environment variable
 SUPER_ADMIN_PASSWORD = os.getenv('SUPER_ADMIN_PASSWORD', 'SuperAdmin123!')  # Fallback for local testing
 SUPER_ADMIN_PASSWORD_HASH = hashlib.sha256(SUPER_ADMIN_PASSWORD.encode()).hexdigest()
@@ -180,7 +183,8 @@ def get_all_available_players():
 
 def generate_random_teams(players, previous_teams=None):
     """Generate random teams with consideration for player sitting out history"""
-    if len(players) < 4:
+    min_players_required = 4 if st.session_state.match_type == "doubles" else 2
+    if len(players) < min_players_required:
         return None, None
     
     waiting_priority = []
@@ -189,12 +193,15 @@ def generate_random_teams(players, previous_teams=None):
         waiting_priority.append((player, sat_out_count))
     
     waiting_priority.sort(key=lambda x: x[1], reverse=True)
-    selected_players = [p[0] for p in waiting_priority[:4]]
-    waiting_players = [p[0] for p in waiting_priority[4:]]
+    players_per_team = 2 if st.session_state.match_type == "doubles" else 1
+    total_players_needed = players_per_team * 2
+    
+    selected_players = [p[0] for p in waiting_priority[:total_players_needed]]
+    waiting_players = [p[0] for p in waiting_priority[total_players_needed:]]
     
     random.shuffle(selected_players)
-    team_a = selected_players[:2]
-    team_b = selected_players[2:4]
+    team_a = selected_players[:players_per_team]
+    team_b = selected_players[players_per_team:total_players_needed]
     
     for player in selected_players:
         if player["id"] not in st.session_state.player_rotation_history:
@@ -538,6 +545,22 @@ def team_formation_section():
     all_players = get_all_available_players()
     player_names = [p["name"] for p in all_players]
     
+    # Add match type selector
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        st.session_state.match_type = st.selectbox(
+            "Match Type:",
+            options=["doubles", "singles"],
+            index=0 if st.session_state.match_type == "doubles" else 1,
+            key="match_type_select"
+        )
+    # with col2:
+    #     if st.session_state.match_type == "doubles":
+    #         st.info("Doubles Mode: Teams of 2 players each")
+    #     else:
+    #         st.info("Singles Mode: 1 player per team")
+    
+    # Rest of the function remains unchanged
     st.subheader("Select Available Players")
     available_players = []
     num_cols = 3
@@ -552,15 +575,17 @@ def team_formation_section():
     st.subheader("Team Generation")
     col1, col2 = st.columns(2)
     
+    min_players_required = 4 if st.session_state.match_type == "doubles" else 2
+    
     with col1:
-        if st.button("Generate Random Teams", key="gen_teams", disabled=len(available_players) < 4):
+        if st.button("Generate Random Teams", key="gen_teams", disabled=len(available_players) < min_players_required):
             team_a, team_b = generate_random_teams(available_players)
             if team_a and team_b:
                 st.session_state.current_teams = {"team_a": team_a, "team_b": team_b}
                 st.success("Teams generated successfully!")
                 st.rerun()
             else:
-                st.error("Not enough players to form two teams. Need at least 4 players.")
+                st.error(f"Not enough players. Need at least {min_players_required} players.")
     
     with col2:
         # Get most recent match
@@ -576,12 +601,18 @@ def team_formation_section():
                 team_a_players = [p for p in team_a_players if p]
                 team_b_players = [p for p in team_b_players if p]
                 
+                # Set match type based on number of players in teams
+                if len(team_a_players) == 1 and len(team_b_players) == 1:
+                    st.session_state.match_type = "singles"
+                else:
+                    st.session_state.match_type = "doubles"
+                
                 st.session_state.current_teams = {"team_a": team_a_players, "team_b": team_b_players}
                 st.success("Teams loaded for rematch from last match!")
                 st.rerun()
             else:
                 st.error("No previous match found for rematch.")
-    
+        
     if st.session_state.current_teams["team_a"] and st.session_state.current_teams["team_b"]:
         col1, col2 = st.columns(2)
         with col1:
@@ -633,6 +664,9 @@ def match_recording_section():
     """Match recording section"""
     st.header("✍️ Record Match Results")
     
+    match_type = "Singles" if st.session_state.match_type == "singles" else "Doubles"
+    st.subheader(f"{match_type} Match")
+    
     if not (st.session_state.current_teams["team_a"] and st.session_state.current_teams["team_b"]):
         st.warning("Generate teams first before recording match results.")
         return
@@ -650,7 +684,7 @@ def match_recording_section():
         for player in st.session_state.current_teams["team_b"]:
             st.write(f"• {player['name']}")
         score_b = st.number_input("Score Team B", min_value=0, value=0, step=1, key="score_b", disabled=not st.session_state.is_admin)
-    
+        
     match_notes = st.text_area("Match Notes (optional)", key="match_notes", disabled=not st.session_state.is_admin)
     record_button = st.button("Record Match Result", key="record_match", disabled=not st.session_state.is_admin)
     if not st.session_state.is_admin:
