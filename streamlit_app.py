@@ -10,10 +10,13 @@ import os
 from collections import defaultdict
 import hashlib
 import pytz
+import shutil
+
 # llm setup
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema import HumanMessage
+
 # gdrive setup
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -22,11 +25,12 @@ from googleapiclient.http import MediaFileUpload
 # Configure logging
 import logging
 logging.basicConfig(level=logging.INFO)
+logging.getLogger('googleapiclient.discovery_cache').setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 # Set page configuration
 st.set_page_config(
-    page_title="XploreMe@Sports - Badminton 🏸",
+    page_title="Badminton AI-App by XploreMeAtSports🥇",
     page_icon="🏸",
     layout="wide"
 )
@@ -59,9 +63,8 @@ if 'player_rotation_history' not in st.session_state:
 if 'data_updated' not in st.session_state:
     st.session_state.data_updated = False
 
-# Admin authentication variables
+# Admin and Super Admin authentication variables
 if 'admin_password_hash' not in st.session_state:
-    # Default admin password is "admin123" - should be changed in production
     st.session_state.admin_password_hash = hashlib.sha256("admin123".encode()).hexdigest()
 
 if 'is_admin' not in st.session_state:
@@ -70,13 +73,23 @@ if 'is_admin' not in st.session_state:
 if 'admin_authenticated_time' not in st.session_state:
     st.session_state.admin_authenticated_time = None
 
+if 'is_super_admin' not in st.session_state:
+    st.session_state.is_super_admin = False
+
+if 'super_admin_authenticated_time' not in st.session_state:
+    st.session_state.super_admin_authenticated_time = None
+
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
 
 if 'api_key_configured' not in st.session_state:
     st.session_state.api_key = "AIzaSyCvR-EJDDqU881df2CrjgDaQjejttoARXw"
-    st.session_state.llm_model = "gemini-2.0-flash"  # "gemini-2.0-flash-lite"
+    st.session_state.llm_model = "gemini-2.0-flash"
     st.session_state.api_key_configured = True
+
+# Super Admin password from environment variable
+SUPER_ADMIN_PASSWORD = os.getenv('SUPER_ADMIN_PASSWORD', 'SuperAdmin123!')  # Fallback for local testing
+SUPER_ADMIN_PASSWORD_HASH = hashlib.sha256(SUPER_ADMIN_PASSWORD.encode()).hexdigest()
 
 # Utility functions
 def load_data():
@@ -87,7 +100,6 @@ def load_data():
             st.session_state.predefined_players = data.get('predefined_players', st.session_state.predefined_players)
             st.session_state.match_history = data.get('match_history', st.session_state.match_history)
             st.session_state.player_rotation_history = data.get('player_rotation_history', st.session_state.player_rotation_history)
-            # Also load admin password if it exists
             if 'admin_password_hash' in data:
                 st.session_state.admin_password_hash = data['admin_password_hash']
 
@@ -101,7 +113,6 @@ def save_data():
     }
     with open('badminton_data.json', 'w') as f:
         json.dump(data, f)
-    # Set flag to indicate data was updated
     st.session_state.data_updated = True
 
 def log_chat_question_answer(question, answer):
@@ -115,7 +126,6 @@ def log_chat_question_answer(question, answer):
         "answer": answer
     }
     
-    # Load existing logs
     if os.path.exists(chat_log_file):
         with open(chat_log_file, 'r') as f:
             try:
@@ -125,10 +135,7 @@ def log_chat_question_answer(question, answer):
     else:
         logs = []
     
-    # Append new log
     logs.append(log_entry)
-    
-    # Save back to file
     with open(chat_log_file, 'w') as f:
         json.dump(logs, f, indent=2)
 
@@ -144,7 +151,6 @@ def get_player_by_id(player_id):
 
 def update_player_stats(player_id, points, is_winner):
     """Update a player's statistics by ID"""
-    # First check predefined players
     for i, player in enumerate(st.session_state.predefined_players):
         if player["id"] == player_id:
             st.session_state.predefined_players[i]["games_played"] += 1
@@ -153,7 +159,6 @@ def update_player_stats(player_id, points, is_winner):
                 st.session_state.predefined_players[i]["wins"] += 1
             return True
     
-    # Then check temporary players
     for i, player in enumerate(st.session_state.temp_players):
         if player["id"] == player_id:
             st.session_state.temp_players[i]["games_played"] += 1
@@ -173,62 +178,45 @@ def generate_random_teams(players, previous_teams=None):
     if len(players) < 4:
         return None, None
     
-    # Prioritize players who sat out in previous matches
     waiting_priority = []
     for player in players:
         sat_out_count = st.session_state.player_rotation_history.get(player["id"], {}).get("sat_out_count", 0)
         waiting_priority.append((player, sat_out_count))
     
-    # Sort by sat_out_count (descending)
     waiting_priority.sort(key=lambda x: x[1], reverse=True)
-    
-    # Take first 4 players with highest sat_out_count
     selected_players = [p[0] for p in waiting_priority[:4]]
     waiting_players = [p[0] for p in waiting_priority[4:]]
     
-    # Randomly divide the 4 players into 2 teams
     random.shuffle(selected_players)
     team_a = selected_players[:2]
     team_b = selected_players[2:4]
     
-    # Update player rotation history
     for player in selected_players:
         if player["id"] not in st.session_state.player_rotation_history:
             st.session_state.player_rotation_history[player["id"]] = {"sat_out_count": 0, "consecutive_plays": 0}
-        
         st.session_state.player_rotation_history[player["id"]]["consecutive_plays"] += 1
     
     for player in waiting_players:
         if player["id"] not in st.session_state.player_rotation_history:
             st.session_state.player_rotation_history[player["id"]] = {"sat_out_count": 0, "consecutive_plays": 0}
-        
         st.session_state.player_rotation_history[player["id"]]["sat_out_count"] += 1
         st.session_state.player_rotation_history[player["id"]]["consecutive_plays"] = 0
     
-    # Store waiting players for next match consideration
     st.session_state.waiting_queue = waiting_players
-    
     return team_a, team_b
 
 def record_match_result(team_a, team_b, score_a, score_b, notes=""):
     """Record match results, update player statistics, and push to Git"""
     match_id = str(uuid.uuid4())
-    
-    # Get current time in IST
     ist = pytz.timezone('Asia/Kolkata')
     timestamp = datetime.datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S")
-    
-    # Determine winning team
     winning_team = "A" if score_a > score_b else "B"
     
-    # Update player statistics using dedicated function
     for player in team_a:
         update_player_stats(player["id"], score_a, winning_team == "A")
-    
     for player in team_b:
         update_player_stats(player["id"], score_b, winning_team == "B")
     
-    # Create match record
     match_record = {
         "id": match_id,
         "timestamp": timestamp,
@@ -242,10 +230,7 @@ def record_match_result(team_a, team_b, score_a, score_b, notes=""):
     
     st.session_state.match_history.append(match_record)
     save_data()
-    
-    # Push to GDrive automatically
     push_to_gdrive(match_history=True)
-    
     return match_record
 
 def verify_admin_password(password):
@@ -257,40 +242,53 @@ def check_admin_session_timeout():
     """Check if admin session has timed out (after 30 minutes)"""
     if st.session_state.admin_authenticated_time:
         elapsed_time = datetime.datetime.now() - st.session_state.admin_authenticated_time
-        # If more than 30 minutes have passed, log out admin
-        if elapsed_time.total_seconds() > 1800:  # 30 minutes = 1800 seconds
+        if elapsed_time.total_seconds() > 1800:
             st.session_state.is_admin = False
             st.session_state.admin_authenticated_time = None
             return True
     return False
 
-# Admin authentication component
+def verify_super_admin_password(password):
+    """Verify super admin password"""
+    password_hash = hashlib.sha256(password.encode()).hexdigest()
+    return password_hash == SUPER_ADMIN_PASSWORD_HASH
+
+def check_super_admin_session_timeout():
+    """Check if super admin session has timed out (after 30 minutes)"""
+    if st.session_state.super_admin_authenticated_time:
+        elapsed_time = datetime.datetime.now() - st.session_state.super_admin_authenticated_time
+        if elapsed_time.total_seconds() > 1800:
+            st.session_state.is_super_admin = False
+            st.session_state.super_admin_authenticated_time = None
+            return True
+    return False
+
+# Admin and Super Admin authentication component
 def admin_authentication():
-    """Admin login/logout component"""
-    # Check if admin session has timed out
-    if st.session_state.is_admin:
-        if check_admin_session_timeout():
-            st.warning("Admin session has timed out. Please login again.")
-    
-    # Create sidebar for login/logout
+    """Admin and Super Admin login/logout component"""
     with st.sidebar:
         st.header("Admin Panel")
         
+        # Check admin session timeout
+        if st.session_state.is_admin:
+            if check_admin_session_timeout():
+                st.warning("Admin session has timed out. Please login again.")
+        
+        # Admin login/logout
         if st.session_state.is_admin:
             st.success("Logged in as Admin")
-            if st.button("Logout"):
+            if st.button("Logout", key="admin_logout"):
                 st.session_state.is_admin = False
                 st.session_state.admin_authenticated_time = None
                 st.rerun()
-                
-            # Admin settings
+            
             with st.expander("Admin Settings"):
                 st.subheader("Change Admin Password")
                 current_password = st.text_input("Current Password", type="password", key="current_pass")
                 new_password = st.text_input("New Password", type="password", key="new_pass")
                 confirm_password = st.text_input("Confirm New Password", type="password", key="confirm_pass")
                 
-                if st.button("Change Password"):
+                if st.button("Change Password", key="change_admin_password"):
                     if not verify_admin_password(current_password):
                         st.error("Current password is incorrect")
                     elif new_password != confirm_password:
@@ -298,15 +296,13 @@ def admin_authentication():
                     elif len(new_password) < 6:
                         st.error("New password must be at least 6 characters")
                     else:
-                        # Update password
                         st.session_state.admin_password_hash = hashlib.sha256(new_password.encode()).hexdigest()
                         save_data()
                         st.success("Password changed successfully")
         else:
             st.info("Login to access admin features")
             admin_password = st.text_input("Admin Password", type="password", key="admin_pass")
-            
-            if st.button("Login"):
+            if st.button("Login", key="admin_login"):
                 if verify_admin_password(admin_password):
                     st.session_state.is_admin = True
                     st.session_state.admin_authenticated_time = datetime.datetime.now()
@@ -315,10 +311,66 @@ def admin_authentication():
                 else:
                     st.error("Incorrect password")
 
+        # Super Admin panel (below Admin panel)
+        st.header("Super Admin Panel")
+        if st.session_state.is_super_admin:
+            if check_super_admin_session_timeout():
+                st.warning("Super Admin session has timed out. Please login again.")
+        
+        if st.session_state.is_super_admin:
+            st.success("Logged in as Super Admin")
+            if st.button("Logout", key="super_admin_logout"):
+                st.session_state.is_super_admin = False
+                st.session_state.super_admin_authenticated_time = None
+                st.rerun()
+            
+            with st.expander("Super Admin Settings"):
+                st.subheader("Restore Backup Files")
+                allowed_files = {"service-account-key.json", "chat_history.json", "badminton_data.json"}
+                uploaded_files = st.file_uploader(
+                    "Upload backup files",
+                    type=["json"],
+                    accept_multiple_files=True,
+                    help="Upload service-account-key.json, chat_history.json, or badminton_data.json to restore."
+                )
+                
+                if uploaded_files:
+                    for uploaded_file in uploaded_files:
+                        if uploaded_file.name not in allowed_files:
+                            st.error(f"Invalid file name. Allowed files: {', '.join(allowed_files)}")
+                            continue
+                        file_path = os.path.join(os.getcwd(), uploaded_file.name)
+                        if os.path.exists(file_path):
+                            backup_path = f"{file_path}.bak"
+                            shutil.copy2(file_path, backup_path)
+                            logger.info(f"Backed up {file_path} to {backup_path}")
+                        with open(file_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+                        st.success(f"Restored {uploaded_file.name} to {file_path}")
+                        logger.info(f"Restored {uploaded_file.name} to {file_path}")
+                        # Reload data if badminton_data.json is restored
+                        if uploaded_file.name == "badminton_data.json":
+                            load_data()
+                
+                if st.button("Sync Restored Files to Google Drive", key="sync_to_gdrive"):
+                    success = upload_to_drive()
+                    st.success("Files synced to Google Drive!" if success else "Sync failed. Check logs.")
+        else:
+            st.info("Login to access super admin features")
+            super_admin_password = st.text_input("Super Admin Password", type="password", key="super_admin_pass")
+            if st.button("Login", key="super_admin_login"):
+                if verify_super_admin_password(super_admin_password):
+                    st.session_state.is_super_admin = True
+                    st.session_state.super_admin_authenticated_time = datetime.datetime.now()
+                    st.success("Super Admin login successful")
+                    st.rerun()
+                else:
+                    st.error("Incorrect password")
+
 # App Components
 def header_section():
     """App header section"""
-    st.title("XploreMe@Sports - Badminton 🏸")
+    st.title("✨XploreMeAtSports: Badminton🏸")
     st.markdown("Manage your badminton matches, teams, and stats!")
 
 def footer_section():
@@ -352,25 +404,18 @@ def player_management_section():
     
     with col1:
         st.subheader("Predefined Players")
-        
-        # Display predefined players
         df_predefined = pd.DataFrame(st.session_state.predefined_players)
         if not df_predefined.empty:
-            # Reorder columns for better display
             columns_order = ["name", "skill_level", "games_played", "wins", "points_scored"]
             display_columns = [col for col in columns_order if col in df_predefined.columns]
             st.dataframe(df_predefined[display_columns], use_container_width=True)
         
-        # Add new predefined player (admin only)
         with st.expander("Add New Predefined Player"):
             new_player_name = st.text_input("Player Name", key="new_predefined_name")
             new_player_skill = st.slider("Skill Level (1-5)", 1, 5, 3, key="new_predefined_skill")
-            
             add_button = st.button("Add Player", key="add_predefined", disabled=not st.session_state.is_admin)
-            
             if not st.session_state.is_admin:
                 st.info("Admin login required to add players")
-            
             if add_button:
                 if new_player_name:
                     new_player = {
@@ -390,27 +435,20 @@ def player_management_section():
     
     with col2:
         st.subheader("Temporary Players")
-        
-        # Display temporary players
         df_temp = pd.DataFrame(st.session_state.temp_players)
         if not df_temp.empty:
-            # Reorder columns for better display
             columns_order = ["name", "skill_level", "games_played", "wins", "points_scored"]
             display_columns = [col for col in columns_order if col in df_temp.columns]
             st.dataframe(df_temp[display_columns], use_container_width=True)
         else:
             st.info("No temporary players added yet")
         
-        # Add new temporary player (admin only)
         with st.expander("Add New Temporary Player"):
             new_temp_name = st.text_input("Player Name", key="new_temp_name")
             new_temp_skill = st.slider("Skill Level (1-5)", 1, 5, 3, key="new_temp_skill")
-            
             add_temp_button = st.button("Add Temporary Player", key="add_temp", disabled=not st.session_state.is_admin)
-            
             if not st.session_state.is_admin:
                 st.info("Admin login required to add players")
-            
             if add_temp_button:
                 if new_temp_name:
                     new_player = {
@@ -427,12 +465,9 @@ def player_management_section():
                 else:
                     st.error("Please enter a player name")
         
-        # Clear all temporary players (admin only)
         clear_button = st.button("Clear All Temporary Players", key="clear_temp", disabled=not st.session_state.is_admin)
-        
         if not st.session_state.is_admin:
             st.info("Admin login required to clear players")
-        
         if clear_button:
             st.session_state.temp_players = []
             st.success("Cleared all temporary players!")
@@ -445,32 +480,23 @@ def team_formation_section():
     all_players = get_all_available_players()
     player_names = [p["name"] for p in all_players]
     
-    # Select active players for today's session
     st.subheader("Select Available Players")
     available_players = []
-    
-    # Display player selection in a grid of checkboxes
     num_cols = 3
     cols = st.columns(num_cols)
-    
     for i, player in enumerate(all_players):
         col_idx = i % num_cols
         with cols[col_idx]:
-            # Everyone can select players
             is_selected = st.checkbox(f"{player['name']} (Skill: {player['skill_level']})", key=f"player_{player['id']}")
             if is_selected:
                 available_players.append(player)
     
-    # Generate random teams
     st.subheader("Team Generation")
-    
     col1, col2 = st.columns(2)
     
     with col1:
-        # Everyone can generate teams
         if st.button("Generate Random Teams", key="gen_teams", disabled=len(available_players) < 4):
             team_a, team_b = generate_random_teams(available_players)
-            
             if team_a and team_b:
                 st.session_state.current_teams = {"team_a": team_a, "team_b": team_b}
                 st.success("Teams generated successfully!")
@@ -479,26 +505,20 @@ def team_formation_section():
                 st.error("Not enough players to form two teams. Need at least 4 players.")
     
     with col2:
-        # Everyone can rematch
         if st.button("Rematch with Same Teams", key="rematch", disabled=not (st.session_state.current_teams["team_a"] and st.session_state.current_teams["team_b"])):
-            # Keep the same teams
             st.success("Teams kept for rematch!")
     
-    # Display current teams
     if st.session_state.current_teams["team_a"] and st.session_state.current_teams["team_b"]:
         col1, col2 = st.columns(2)
-        
         with col1:
             st.subheader("Team A")
             for player in st.session_state.current_teams["team_a"]:
                 st.write(f"• {player['name']} (Skill: {player['skill_level']})")
-        
         with col2:
             st.subheader("Team B")
             for player in st.session_state.current_teams["team_b"]:
                 st.write(f"• {player['name']} (Skill: {player['skill_level']})")
     
-    # Waiting queue
     if st.session_state.waiting_queue:
         st.subheader("Players Waiting")
         waiting_text = ", ".join([p["name"] for p in st.session_state.waiting_queue])
@@ -513,33 +533,23 @@ def match_recording_section():
         return
     
     col1, col2, col3 = st.columns([2, 1, 2])
-    
     with col1:
         st.subheader("Team A")
         for player in st.session_state.current_teams["team_a"]:
             st.write(f"• {player['name']}")
-        # Everyone can view scores, but only admin can input them
         score_a = st.number_input("Score Team A", min_value=0, value=0, step=1, key="score_a", disabled=not st.session_state.is_admin)
-    
     with col2:
         st.markdown("<h2 style='text-align: center;'>VS</h2>", unsafe_allow_html=True)
-    
     with col3:
         st.subheader("Team B")
         for player in st.session_state.current_teams["team_b"]:
             st.write(f"• {player['name']}")
-        # Everyone can view scores, but only admin can input them
         score_b = st.number_input("Score Team B", min_value=0, value=0, step=1, key="score_b", disabled=not st.session_state.is_admin)
     
-    # Everyone can view notes, but only admin can input them
     match_notes = st.text_area("Match Notes (optional)", key="match_notes", disabled=not st.session_state.is_admin)
-    
-    # Admin-only match recording
     record_button = st.button("Record Match Result", key="record_match", disabled=not st.session_state.is_admin)
-    
     if not st.session_state.is_admin:
         st.info("Admin login required to record match results")
-    
     if record_button:
         if score_a == 0 and score_b == 0:
             st.error("Please enter valid scores for the match.")
@@ -552,67 +562,41 @@ def match_recording_section():
                 match_notes
             )
             st.success("Match recorded successfully!")
-            # Trigger rerun to refresh the UI with updated stats
             st.rerun()
 
 def statistics_section():
     """Statistics and analytics section"""
     st.header("Statistics & Analytics")
-    
     tab1, tab2, tab3 = st.tabs(["Player Stats", "Match History", "Team Analysis"])
     
     with tab1:
         st.subheader("Player Performance")
-        
-        # Combine all players
         all_players = st.session_state.predefined_players + st.session_state.temp_players
-        
         if all_players:
-            # Create dataframe
             df_players = pd.DataFrame(all_players)
-            
-            # Calculate win rate
             df_players["win_rate"] = df_players.apply(
-                lambda x: round((x["wins"] / x["games_played"]) * 100, 1) if x["games_played"] > 0 else 0,
-                axis=1
+                lambda x: round((x["wins"] / x["games_played"]) * 100, 1) if x["games_played"] > 0 else 0, axis=1
             )
-            
-            # Calculate avg points per game
             df_players["avg_points_per_game"] = df_players.apply(
-                lambda x: round(x["points_scored"] / x["games_played"], 1) if x["games_played"] > 0 else 0,
-                axis=1
+                lambda x: round(x["points_scored"] / x["games_played"], 1) if x["games_played"] > 0 else 0, axis=1
             )
-            
-            # Display table
             columns_to_display = ["name", "games_played", "wins", "win_rate", "points_scored", "avg_points_per_game", "skill_level"]
             st.dataframe(df_players[columns_to_display].sort_values(by="win_rate", ascending=False), use_container_width=True)
-            
-            # Display charts
             if not df_players.empty and df_players["games_played"].sum() > 0:
                 col1, col2 = st.columns(2)
-                
                 with col1:
                     st.subheader("Win Rate by Player")
                     fig, ax = plt.subplots(figsize=(10, 6))
-                    
-                    # Filter players with at least one game
-                    active_players = df_players[df_players["games_played"] > 0]
-                    
-                    # Sort by win rate
-                    active_players = active_players.sort_values("win_rate", ascending=False)
-                    
+                    active_players = df_players[df_players["games_played"] > 0].sort_values("win_rate", ascending=False)
                     sns.barplot(x="name", y="win_rate", data=active_players, ax=ax)
                     plt.xticks(rotation=45, ha="right")
                     plt.ylabel("Win Rate (%)")
                     plt.xlabel("")
                     plt.tight_layout()
                     st.pyplot(fig)
-                
                 with col2:
                     st.subheader("Games Played vs Wins")
                     fig, ax = plt.subplots(figsize=(10, 6))
-                    
-                    # Create a melted dataframe for grouped bar chart
                     df_melt = pd.melt(
                         active_players,
                         id_vars=["name"],
@@ -620,8 +604,6 @@ def statistics_section():
                         var_name="Metric",
                         value_name="Count"
                     )
-                    
-                    # Create grouped bar chart
                     sns.barplot(x="name", y="Count", hue="Metric", data=df_melt, ax=ax)
                     plt.xticks(rotation=45, ha="right")
                     plt.tight_layout()
@@ -631,18 +613,13 @@ def statistics_section():
     
     with tab2:
         st.subheader("Match History")
-        
         if st.session_state.match_history:
-            # Create a dataframe from match history
             match_data = []
-            
             for match in st.session_state.match_history:
-                # Get player names for each team
                 team_a_names = [get_player_by_id(pid)["name"] for pid in match["team_a"] if get_player_by_id(pid)]
                 team_b_names = [get_player_by_id(pid)["name"] for pid in match["team_b"] if get_player_by_id(pid)]
-                
                 match_data.append({
-                    "Match ID": match["id"][:8],  # Shortened ID for display
+                    "Match ID": match["id"][:8],
                     "Date": match["timestamp"],
                     "Team A": " & ".join(team_a_names),
                     "Team B": " & ".join(team_b_names),
@@ -650,17 +627,10 @@ def statistics_section():
                     "Winner": f"Team {match['winning_team']}",
                     "Notes": match["notes"]
                 })
-            
-            # Create dataframe and display
             df_matches = pd.DataFrame(match_data)
             st.dataframe(df_matches, use_container_width=True)
-            
-            # Match statistics chart
             st.subheader("Match Score Distribution")
-            
             fig, ax = plt.subplots(figsize=(10, 6))
-            
-            # Extract scores
             scores_data = []
             for match in st.session_state.match_history:
                 scores_data.append({
@@ -668,7 +638,6 @@ def statistics_section():
                     "Team A": match["score_a"],
                     "Team B": match["score_b"]
                 })
-            
             df_scores = pd.DataFrame(scores_data)
             df_melt = pd.melt(
                 df_scores,
@@ -677,7 +646,6 @@ def statistics_section():
                 var_name="Team",
                 value_name="Score"
             )
-            
             sns.barplot(x="Match", y="Score", hue="Team", data=df_melt, ax=ax)
             plt.xticks(rotation=45, ha="right")
             plt.tight_layout()
@@ -687,32 +655,23 @@ def statistics_section():
     
     with tab3:
         st.subheader("Team Analysis")
-        
         if st.session_state.match_history:
-            # Create team combination performance analysis
             team_stats = defaultdict(lambda: {"matches": 0, "wins": 0, "total_points": 0})
-            
             for match in st.session_state.match_history:
-                # Team A combination
                 team_a_key = "&".join(sorted([get_player_by_id(pid)["name"] for pid in match["team_a"] if get_player_by_id(pid)]))
                 team_stats[team_a_key]["matches"] += 1
                 team_stats[team_a_key]["total_points"] += match["score_a"]
                 if match["winning_team"] == "A":
                     team_stats[team_a_key]["wins"] += 1
-                
-                # Team B combination
                 team_b_key = "&".join(sorted([get_player_by_id(pid)["name"] for pid in match["team_b"] if get_player_by_id(pid)]))
                 team_stats[team_b_key]["matches"] += 1
                 team_stats[team_b_key]["total_points"] += match["score_b"]
                 if match["winning_team"] == "B":
                     team_stats[team_b_key]["wins"] += 1
-            
-            # Create dataframe from team stats
             team_data = []
             for team_key, stats in team_stats.items():
                 win_rate = round((stats["wins"] / stats["matches"]) * 100, 1) if stats["matches"] > 0 else 0
                 avg_points = round(stats["total_points"] / stats["matches"], 1) if stats["matches"] > 0 else 0
-                
                 team_data.append({
                     "Team": team_key,
                     "Matches": stats["matches"],
@@ -720,20 +679,13 @@ def statistics_section():
                     "Win Rate (%)": win_rate,
                     "Avg Points": avg_points
                 })
-            
             df_teams = pd.DataFrame(team_data)
             st.dataframe(df_teams.sort_values(by="Win Rate (%)", ascending=False), use_container_width=True)
-            
-            # Team win rate chart
             st.subheader("Team Win Rates")
-            
             fig, ax = plt.subplots(figsize=(10, 6))
             df_teams_sorted = df_teams.sort_values(by="Win Rate (%)", ascending=False)
-            
-            # Only show top 10 teams if there are many
             if len(df_teams_sorted) > 10:
                 df_teams_sorted = df_teams_sorted.head(10)
-            
             sns.barplot(x="Team", y="Win Rate (%)", data=df_teams_sorted, ax=ax)
             plt.xticks(rotation=45, ha="right")
             plt.tight_layout()
@@ -747,62 +699,46 @@ def chatbot_section():
     st.header("BadmintonBuddy AI-Assistant 🤖")
     st.write("Ask questions about your badminton data, players, statistics, and match history!")
     
-    # Display chat history
     for message in st.session_state.chat_history:
         with st.chat_message(message["role"]):
             st.write(message["content"])
     
-    # User input
     user_query = st.chat_input("Ask something about the badminton data...")
     
     if user_query:
-        # Add user message to chat history
         st.session_state.chat_history.append({"role": "user", "content": user_query})
-        
-        # Display user message
         with st.chat_message("user"):
             st.write(user_query)
         
-        # Display assistant thinking
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
             message_placeholder.markdown("Thinking...")
-            
-            # Process the query
             try:
                 response_content = process_query(user_query)
-                # Log the question and answer
                 log_chat_question_answer(user_query, response_content)
-                # Update placeholder with response
                 message_placeholder.markdown(response_content)
-                # Add assistant response to chat history
                 st.session_state.chat_history.append({"role": "assistant", "content": response_content})
-
-                # Push to GDrive automatically
                 push_to_gdrive(chat_history=True)
             except Exception as e:
                 message_placeholder.markdown(f"Error processing your query: {str(e)}")
-                st.error("Failed to get a response from the model. Please check the logs for more details.")
+                st.error("Failed to get a response from the model. Please check the logs.")
 
 def process_query(user_query):
     """Process the user query with the LLM"""
     try:
-        # Load the badminton data
         try:
             with open('badminton_data.json', 'r', encoding='utf-8') as file:
                 badminton_data = json.load(file)
         except FileNotFoundError:
-            badminton_data = "Error: The badminton_data.json file was not found.  Also, please recommend that the user play some matches."
+            badminton_data = "Error: The badminton_data.json file was not found. Also, please recommend that the user play some matches."
         except json.JSONDecodeError:
             return "Error: Invalid JSON format in badminton_data.json."
         
-        # Get the last 5 user questions from chat history
         last_five_questions = []
         user_messages = [msg for msg in reversed(st.session_state.chat_history) if msg["role"] == "user"]
         for i in range(min(5, len(user_messages))):
             last_five_questions.append(user_messages[i]["content"])
         
-        # Create prompt template
         prompt_template = ChatPromptTemplate.from_template(
             """You are BadmintonBuddy, a super chill and fun badminton assistant who loves to chat about the game like a best friend! Your main job is to answer questions about the provided badminton data in JSON format, but you can also tackle general badminton topics (like rules or strategies) or even off-topic stuff if it makes sense. Here’s how to roll:
 
@@ -846,46 +782,43 @@ def process_query(user_query):
 
 Give your answer in a clear, buddy-like way, using headings or bullet points if needed, and toss in some fun where it fits!""")
         
-        # Initialize the model
         model = ChatGoogleGenerativeAI(
-            model=st.session_state.llm_model, 
-            google_api_key=st.session_state.api_key, 
+            model=st.session_state.llm_model,
+            google_api_key=st.session_state.api_key,
             temperature=0.25
         )
         
-        # Format the prompt with data, last 5 questions, and current query
         prompt = prompt_template.format(
             badminton_data=json.dumps(badminton_data, indent=2),
             last_questions="\n".join(last_five_questions) if last_five_questions else "No previous questions.",
             user_ask=user_query
         )
-        
-        # Create a message and get the response
         message = HumanMessage(content=prompt)
-        response = model([message])
+        response = model.invoke([message])  # Updated to use invoke instead of __call__
         
         return response.content
     except Exception as e:
         return f"An error occurred: {str(e)}"
 
 def get_drive_service():
-    """Get authenticated Google Drive service using Streamlit Secrets."""
+    """Get authenticated Google Drive service using a service account."""
     try:
-        logger.info("Loading service account credentials from Streamlit Secrets")
+        logger.info("Loading service account credentials")
         SCOPES = ['https://www.googleapis.com/auth/drive.file']
         
-        # Load credentials from Streamlit Secrets
-        credentials_json = st.secrets.get("GOOGLE_CREDENTIALS")
-        if not credentials_json:
-            logger.error("GOOGLE_CREDENTIALS not found in Streamlit Secrets")
-            return None
-        
-        # Parse the JSON string
-        credentials_dict = json.loads(credentials_json)
-        
-        # Create credentials object
-        creds = service_account.Credentials.from_service_account_info(
-            credentials_dict, scopes=SCOPES)
+        credentials_json = os.getenv('GOOGLE_CREDENTIALS')
+        if credentials_json:
+            logger.info("Using credentials from GOOGLE_CREDENTIALS environment variable")
+            creds = service_account.Credentials.from_service_account_info(
+                json.loads(credentials_json), scopes=SCOPES)
+        else:
+            SERVICE_ACCOUNT_FILE = os.getenv('GOOGLE_SERVICE_ACCOUNT_KEY_PATH', 'service-account-key.json')
+            logger.info(f"Using service account key file: {SERVICE_ACCOUNT_FILE}")
+            if not os.path.exists(SERVICE_ACCOUNT_FILE):
+                logger.error(f"Service account key file not found: {SERVICE_ACCOUNT_FILE}")
+                return None
+            creds = service_account.Credentials.from_service_account_file(
+                SERVICE_ACCOUNT_FILE, scopes=SCOPES)
         
         logger.info("Building Google Drive service")
         drive_service = build('drive', 'v3', credentials=creds, cache_discovery=False)
@@ -899,7 +832,6 @@ def get_drive_service():
 def upload_to_drive(chat_history=False, match_history=False):
     """Upload badminton_data.json and chat_history.json to Google Drive."""
     try:
-        # Files to upload
         if chat_history:
             files_to_upload = ["chat_history.json"]
         elif match_history:
@@ -907,28 +839,22 @@ def upload_to_drive(chat_history=False, match_history=False):
         else:
             files_to_upload = ["badminton_data.json", "chat_history.json"]
         
-        # Check if files exist
         files_to_upload = [f for f in files_to_upload if os.path.exists(f)]
         if not files_to_upload:
             logger.warning("No output files found to upload")
             return False
         
-        # Get Drive service
         drive_service = get_drive_service()
         if not drive_service:
             logger.error("Failed to get Google Drive service")
             return False
         
-        # Get IST timestamp
         ist = pytz.timezone('Asia/Kolkata')
         timestamp = datetime.datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Specify the target folder ID
         target_folder_id = '1u5w1ESII4eCx9CE6LGp-ehPJd3rTriZf'
         
         uploaded_files = []
         for file_path in files_to_upload:
-            # Check if file already exists in Drive to update it
             file_name = os.path.basename(file_path)
             query = f"name = '{file_name}' and trashed = false"
             
@@ -938,28 +864,22 @@ def upload_to_drive(chat_history=False, match_history=False):
                 fields='files(id, name, parents)'
             ).execute()
             
-            # Prepare file metadata
             file_metadata = {
                 'name': file_name,
                 'parents': [target_folder_id]
             }
             
-            # Prepare media
             media = MediaFileUpload(
                 file_path,
                 resumable=True
             )
             
-            # Update or create file
             if response.get('files'):
-                # Update existing file
                 file_id = response['files'][0]['id']
                 current_parents = response['files'][0].get('parents', [])
                 
-                # Check if the file is in the target folder
                 if target_folder_id not in current_parents:
                     logger.info(f"Moving {file_name} to target folder")
-                    # Remove from current parents and add to target folder
                     file = drive_service.files().update(
                         fileId=file_id,
                         addParents=target_folder_id,
@@ -969,14 +889,12 @@ def upload_to_drive(chat_history=False, match_history=False):
                     ).execute()
                 else:
                     logger.info(f"Updating existing file: {file_name}")
-                    # Update content only
                     file = drive_service.files().update(
                         fileId=file_id,
                         media_body=media,
                         fields='id'
                     ).execute()
             else:
-                # Upload new file
                 logger.info(f"Uploading new file: {file_name}")
                 file = drive_service.files().create(
                     body=file_metadata,
@@ -998,38 +916,26 @@ def push_to_gdrive(chat_history=False, match_history=False):
         upload_to_drive(chat_history=chat_history, match_history=match_history)
     except Exception as e:
         logger.error(f"Failed to upload to GDrive: {str(e)}")
-    
 
 def main():
     """Main app"""
-    # Load data
     load_data()
-    
-    # Check if the app needs to trigger a rerun based on data updates
     if st.session_state.data_updated:
         st.session_state.data_updated = False
         st.rerun()
     
-    # Admin authentication (shown in sidebar)
     admin_authentication()
-    
-    # App layout
     header_section()
     footer_section()
     
-    # Main navigation tabs
     tab1, tab2, tab3, tab4 = st.tabs(["Players", "Team Formation", "Match Recording", "Statistics"])
-    
     with tab1:
         player_management_section()
         chatbot_section()
-    
     with tab2:
         team_formation_section()
-    
     with tab3:
         match_recording_section()
-    
     with tab4:
         statistics_section()
 
