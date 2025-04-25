@@ -10,10 +10,19 @@ import os
 from collections import defaultdict
 import hashlib
 import pytz
+# llm setup
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema import HumanMessage
+# gdrive setup
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
+# Configure logging
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Set page configuration
 st.set_page_config(
@@ -202,7 +211,7 @@ def generate_random_teams(players, previous_teams=None):
     return team_a, team_b
 
 def record_match_result(team_a, team_b, score_a, score_b, notes=""):
-    """Record match results and update player statistics"""
+    """Record match results, update player statistics, and push to Git"""
     match_id = str(uuid.uuid4())
     
     # Get current time in IST
@@ -233,6 +242,10 @@ def record_match_result(team_a, team_b, score_a, score_b, notes=""):
     
     st.session_state.match_history.append(match_record)
     save_data()
+    
+    # Push to GDrive automatically
+    push_to_gdrive(match_history=True)
+    
     return match_record
 
 def verify_admin_password(password):
@@ -764,6 +777,9 @@ def chatbot_section():
                 message_placeholder.markdown(response_content)
                 # Add assistant response to chat history
                 st.session_state.chat_history.append({"role": "assistant", "content": response_content})
+
+                # Push to GDrive automatically
+                push_to_gdrive(chat_history=True)
             except Exception as e:
                 message_placeholder.markdown(f"Error processing your query: {str(e)}")
                 st.error("Failed to get a response from the model. Please check the logs for more details.")
@@ -853,6 +869,131 @@ Give your answer in a clear, buddy-like way, using headings or bullet points if 
         return f"An error occurred: {str(e)}"
 
 
+def get_drive_service():
+    """Get authenticated Google Drive service using a service account."""
+    try:
+        # Define the required scopes
+        SCOPES = ['https://www.googleapis.com/auth/drive.file']
+        
+        # Path to the service account key JSON file
+        SERVICE_ACCOUNT_FILE = 'service-account-key.json'
+        
+        # Load credentials from the service account key file
+        creds = service_account.Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+        
+        # Build the Drive service
+        drive_service = build('drive', 'v3', credentials=creds)
+        return drive_service
+    
+    except Exception as e:
+        logger.error(f"Error building Drive service: {str(e)}")
+        return None
+
+def upload_to_drive(chat_history=False, match_history=False):
+    """Upload badminton_data.json and chat_history.json to Google Drive."""
+    try:
+        # Files to upload
+        if chat_history:
+            files_to_upload = ["chat_history.json"]
+        elif match_history:
+            files_to_upload = ["badminton_data.json"]
+        else:
+            files_to_upload = ["badminton_data.json", "chat_history.json"]
+        
+        # Check if files exist
+        files_to_upload = [f for f in files_to_upload if os.path.exists(f)]
+        if not files_to_upload:
+            logger.warning("No output files found to upload")
+            return False
+        
+        # Get Drive service
+        drive_service = get_drive_service()
+        if not drive_service:
+            logger.error("Failed to get Google Drive service")
+            return False
+        
+        # Get IST timestamp
+        ist = pytz.timezone('Asia/Kolkata')
+        timestamp = datetime.datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Specify the target folder ID
+        target_folder_id = '1u5w1ESII4eCx9CE6LGp-ehPJd3rTriZf'
+        
+        uploaded_files = []
+        for file_path in files_to_upload:
+            # Check if file already exists in Drive to update it
+            file_name = os.path.basename(file_path)
+            query = f"name = '{file_name}' and trashed = false"
+            
+            response = drive_service.files().list(
+                q=query,
+                spaces='drive',
+                fields='files(id, name, parents)'
+            ).execute()
+            
+            # Prepare file metadata
+            file_metadata = {
+                'name': file_name,
+                'parents': [target_folder_id]
+            }
+            
+            # Prepare media
+            media = MediaFileUpload(
+                file_path,
+                resumable=True
+            )
+            
+            # Update or create file
+            if response.get('files'):
+                # Update existing file
+                file_id = response['files'][0]['id']
+                current_parents = response['files'][0].get('parents', [])
+                
+                # Check if the file is in the target folder
+                if target_folder_id not in current_parents:
+                    logger.info(f"Moving {file_name} to target folder")
+                    # Remove from current parents and add to target folder
+                    file = drive_service.files().update(
+                        fileId=file_id,
+                        addParents=target_folder_id,
+                        removeParents=','.join(current_parents),
+                        media_body=media,
+                        fields='id, parents'
+                    ).execute()
+                else:
+                    logger.info(f"Updating existing file: {file_name}")
+                    # Update content only
+                    file = drive_service.files().update(
+                        fileId=file_id,
+                        media_body=media,
+                        fields='id'
+                    ).execute()
+            else:
+                # Upload new file
+                logger.info(f"Uploading new file: {file_name}")
+                file = drive_service.files().create(
+                    body=file_metadata,
+                    media_body=media,
+                    fields='id'
+                ).execute()
+            
+            uploaded_files.append(file_name)
+        
+        logger.info(f"Successfully uploaded {', '.join(uploaded_files)} to Google Drive")
+        return True
+    except Exception as e:
+        logger.error(f"Google Drive upload error: {str(e)}")
+        return False
+
+def push_to_gdrive(chat_history=False, match_history=False):
+    """Push data to Google Drive"""
+    try:
+        upload_to_drive(chat_history=chat_history, match_history=match_history)
+    except Exception as e:
+        logger.error(f"Failed to upload to GDrive: {str(e)}")
+    
+
 def main():
     """Main app"""
     # Load data
@@ -875,7 +1016,6 @@ def main():
     
     with tab1:
         player_management_section()
-        # Add the chatbot section to the bottom of the Players tab
         chatbot_section()
     
     with tab2:
