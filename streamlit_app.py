@@ -595,17 +595,33 @@ def team_formation_section():
     elif last_match:
         # Display last match teams even if not selected for current session
         st.subheader("Last Match Teams")
+        
+        # Display the match score
+        score_a = last_match["score_a"]
+        score_b = last_match["score_b"]
+        winner = "A" if score_a > score_b else "B"
+        st.markdown(f"**Last Match Score:** Team A - {score_a}  |  Team B - {score_b}  |  Winner: Team {winner}")
+        
+        # Display the match timestamp
+        match_time = datetime.datetime.strptime(last_match["timestamp"], "%Y-%m-%d %H:%M:%S")
+        st.markdown(f"**Played on:** {match_time.strftime('%Y-%m-%d at %H:%M')}")
+        
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("**Team A (Last Match)**")
+            st.markdown(f"**Team A** {':trophy:' if winner == 'A' else ''}")
             team_a_names = [get_player_by_id(pid)["name"] for pid in last_match["team_a"] if get_player_by_id(pid)]
             for name in team_a_names:
                 st.write(f"• {name}")
         with col2:
-            st.markdown("**Team B (Last Match)**")
+            st.markdown(f"**Team B** {':trophy:' if winner == 'B' else ''}")
             team_b_names = [get_player_by_id(pid)["name"] for pid in last_match["team_b"] if get_player_by_id(pid)]
             for name in team_b_names:
                 st.write(f"• {name}")
+        
+        # Display any match notes if they exist
+        if last_match.get("notes"):
+            st.markdown(f"**Match Notes:** {last_match['notes']}")
+            
         st.info("Click 'Rematch with Last Teams' above to use these teams again.")
     
     if st.session_state.waiting_queue:
