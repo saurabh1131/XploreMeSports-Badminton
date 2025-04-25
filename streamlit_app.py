@@ -380,14 +380,48 @@ def header_section():
 
 def footer_section():
     """App Footer section with visitor counter"""
-
-    # Initialize the visitor count in session state if it doesn't exist
-    if 'visitor_count' not in st.session_state:
-        st.session_state.visitor_count = 0
-
-    # Increment the visitor count
-    st.session_state.visitor_count += 1
-
+    
+    # Path to the visitor count JSON file
+    visitor_file = 'visitor_count.json'
+    
+    # Initialize or load the visitor count
+    if 'visitor_counted' not in st.session_state:
+        st.session_state.visitor_counted = False
+        
+        if os.path.exists(visitor_file):
+            try:
+                with open(visitor_file, 'r') as f:
+                    visitor_data = json.load(f)
+                    visitor_count = visitor_data.get('count', 0)
+            except (json.JSONDecodeError, FileNotFoundError):
+                visitor_count = 0
+        else:
+            visitor_count = 0
+        
+        # Increment the count for this session only
+        visitor_count += 1
+        
+        # Save the updated count
+        with open(visitor_file, 'w') as f:
+            json.dump({'count': visitor_count}, f)
+        
+        # Mark this session as counted
+        st.session_state.visitor_counted = True
+        
+        # Add the file to the backup list for Google Drive
+        push_to_gdrive(visitor_count=True)
+    else:
+        # Read the current count without incrementing
+        if os.path.exists(visitor_file):
+            try:
+                with open(visitor_file, 'r') as f:
+                    visitor_data = json.load(f)
+                    visitor_count = visitor_data.get('count', 0)
+            except (json.JSONDecodeError, FileNotFoundError):
+                visitor_count = 0
+        else:
+            visitor_count = 0
+    
     st.markdown(
         f"""
         <style>
@@ -403,7 +437,7 @@ def footer_section():
             }}
         </style>
         <div id="footer">
-            Built by <b>XploreMe@Sports</b> with 🧡 | Visitors: {st.session_state.visitor_count}
+            Built by <b>XploreMe@Sports</b> with 🧡 | Visitors: {visitor_count}
         </div>
         """,
         unsafe_allow_html=True
@@ -900,15 +934,17 @@ def get_drive_service():
         logger.error(f"Error building Drive service: {str(e)}")
         return None
 
-def upload_to_drive(chat_history=False, match_history=False):
-    """Upload badminton_data.json and chat_history.json to Google Drive."""
+def upload_to_drive(chat_history=False, match_history=False, files=None):
+    """Upload specified files to Google Drive."""
     try:
-        if chat_history:
+        if files:
+            files_to_upload = files
+        elif chat_history:
             files_to_upload = ["chat_history.json"]
         elif match_history:
             files_to_upload = ["badminton_data.json"]
         else:
-            files_to_upload = ["badminton_data.json", "chat_history.json"]
+            files_to_upload = ["badminton_data.json", "chat_history.json", "visitor_count.json"]
         
         files_to_upload = [f for f in files_to_upload if os.path.exists(f)]
         if not files_to_upload:
@@ -981,10 +1017,13 @@ def upload_to_drive(chat_history=False, match_history=False):
         logger.error(f"Google Drive upload error: {str(e)}")
         return False
 
-def push_to_gdrive(chat_history=False, match_history=False):
+def push_to_gdrive(chat_history=False, match_history=False, visitor_count=False):
     """Push data to Google Drive"""
     try:
-        upload_to_drive(chat_history=chat_history, match_history=match_history)
+        if visitor_count:
+            upload_to_drive(files=["visitor_count.json"])
+        else:
+            upload_to_drive(chat_history=chat_history, match_history=match_history)
     except Exception as e:
         logger.error(f"Failed to upload to GDrive: {str(e)}")
 
