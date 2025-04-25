@@ -454,7 +454,7 @@ def player_management_section():
         st.subheader("Predefined Players")
         df_predefined = pd.DataFrame(st.session_state.predefined_players)
         if not df_predefined.empty:
-            columns_order = ["name", "skill_level", "games_played", "wins", "points_scored"]
+            columns_order = ["name", "games_played", "wins", "points_scored"]
             display_columns = [col for col in columns_order if col in df_predefined.columns]
             st.dataframe(df_predefined[display_columns], use_container_width=True)
         
@@ -535,7 +535,7 @@ def team_formation_section():
     for i, player in enumerate(all_players):
         col_idx = i % num_cols
         with cols[col_idx]:
-            is_selected = st.checkbox(f"{player['name']} (Skill: {player['skill_level']})", key=f"player_{player['id']}")
+            is_selected = st.checkbox(f"{player['name']}", key=f"player_{player['id']}")
             if is_selected:
                 available_players.append(player)
     
@@ -628,7 +628,7 @@ def statistics_section():
             df_players["avg_points_per_game"] = df_players.apply(
                 lambda x: round(x["points_scored"] / x["games_played"], 1) if x["games_played"] > 0 else 0, axis=1
             )
-            columns_to_display = ["name", "games_played", "wins", "win_rate", "points_scored", "avg_points_per_game", "skill_level"]
+            columns_to_display = ["name", "games_played", "wins", "win_rate", "points_scored", "avg_points_per_game"]
             st.dataframe(df_players[columns_to_display].sort_values(by="win_rate", ascending=False), use_container_width=True)
             if not df_players.empty and df_players["games_played"].sum() > 0:
                 col1, col2 = st.columns(2)
