@@ -687,12 +687,12 @@ def statistics_section():
         if st.session_state.match_history:
             team_stats = defaultdict(lambda: {"matches": 0, "wins": 0, "total_points": 0})
             for match in st.session_state.match_history:
-                team_a_key = "&".join(sorted([get_player_by_id(pid)["name"] for pid in match["team_a"] if get_player_by_id(pid)]))
+                team_a_key = " & ".join(sorted([get_player_by_id(pid)["name"] for pid in match["team_a"] if get_player_by_id(pid)]))
                 team_stats[team_a_key]["matches"] += 1
                 team_stats[team_a_key]["total_points"] += match["score_a"]
                 if match["winning_team"] == "A":
                     team_stats[team_a_key]["wins"] += 1
-                team_b_key = "&".join(sorted([get_player_by_id(pid)["name"] for pid in match["team_b"] if get_player_by_id(pid)]))
+                team_b_key = " & ".join(sorted([get_player_by_id(pid)["name"] for pid in match["team_b"] if get_player_by_id(pid)]))
                 team_stats[team_b_key]["matches"] += 1
                 team_stats[team_b_key]["total_points"] += match["score_b"]
                 if match["winning_team"] == "B":
