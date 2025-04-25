@@ -66,7 +66,7 @@ if 'chat_history' not in st.session_state:
 
 if 'api_key_configured' not in st.session_state:
     st.session_state.api_key = "AIzaSyCvR-EJDDqU881df2CrjgDaQjejttoARXw"
-    st.session_state.llm_model = "gemini-2.0-flash-lite"
+    st.session_state.llm_model = "gemini-2.0-flash"  # "gemini-2.0-flash-lite"
     st.session_state.api_key_configured = True
 
 # Utility functions
@@ -307,6 +307,29 @@ def header_section():
     """App header section"""
     st.title("XploreMe@Sports - Badminton 🏸")
     st.markdown("Manage your badminton matches, teams, and stats!")
+
+def footer_section():
+    """App Footer section"""
+    st.markdown(
+        """
+        <style>
+            #footer {
+                position: fixed;
+                bottom: 10px;
+                left: 50%;
+                transform: translateX(-50%);
+                font-size: 14px;
+                color: gray;
+                text-align: center;
+                z-index: 1000;
+            }
+        </style>
+        <div id="footer">
+            Built by <b>XploreMe@Sports</b> with 🧡
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 def player_management_section():
     """Player management section"""
@@ -757,12 +780,19 @@ def process_query(user_query):
         except json.JSONDecodeError:
             return "Error: Invalid JSON format in badminton_data.json."
         
+        # Get the last 5 user questions from chat history
+        last_five_questions = []
+        user_messages = [msg for msg in reversed(st.session_state.chat_history) if msg["role"] == "user"]
+        for i in range(min(5, len(user_messages))):
+            last_five_questions.append(user_messages[i]["content"])
+        
         # Create prompt template
         prompt_template = ChatPromptTemplate.from_template(
             """You are BadmintonBuddy, a super chill and fun badminton assistant who loves to chat about the game like a best friend! Your main job is to answer questions about the provided badminton data in JSON format, but you can also tackle general badminton topics (like rules or strategies) or even off-topic stuff if it makes sense. Here’s how to roll:
 
 1. **Figure Out the Vibe**:
    - Check if the user’s question is about the JSON data, general badminton stuff, or something totally random.
+   - Use the last 5 user questions to understand the conversation context and tailor your response accordingly.
 
 2. **If It’s About the JSON Data**:
    - Dig into the JSON to get the scoop (think players, matches, stats, etc.).
@@ -792,7 +822,10 @@ def process_query(user_query):
 **JSON Data**:
 {badminton_data}
 
-**User Query**:
+**Last 5 User Questions**:
+{last_questions}
+
+**User's Current Question**:
 {user_ask}
 
 Give your answer in a clear, buddy-like way, using headings or bullet points if needed, and toss in some fun where it fits!""")
@@ -801,12 +834,13 @@ Give your answer in a clear, buddy-like way, using headings or bullet points if 
         model = ChatGoogleGenerativeAI(
             model=st.session_state.llm_model, 
             google_api_key=st.session_state.api_key, 
-            temperature=0.5
+            temperature=0.25
         )
         
-        # Format the prompt with data and query
+        # Format the prompt with data, last 5 questions, and current query
         prompt = prompt_template.format(
             badminton_data=json.dumps(badminton_data, indent=2),
+            last_questions="\n".join(last_five_questions) if last_five_questions else "No previous questions.",
             user_ask=user_query
         )
         
@@ -834,6 +868,7 @@ def main():
     
     # App layout
     header_section()
+    footer_section()
     
     # Main navigation tabs
     tab1, tab2, tab3, tab4 = st.tabs(["Players", "Team Formation", "Match Recording", "Statistics"])
