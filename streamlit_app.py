@@ -331,12 +331,12 @@ def admin_authentication():
             
             with st.expander("Super Admin Settings"):
                 st.subheader("Restore Backup Files")
-                allowed_files = {"service-account-key.json", "chat_history.json", "badminton_data.json"}
+                allowed_files = {"service-account-key.json", "chat_history.json", "badminton_data.json", "visitor_count.json"}
                 uploaded_files = st.file_uploader(
                     "Upload backup files",
                     type=["json"],
                     accept_multiple_files=True,
-                    help="Upload service-account-key.json, chat_history.json, or badminton_data.json to restore."
+                    help="Upload service-account-key.json, chat_history.json, visitor_count.json or badminton_data.json to restore."
                 )
                 
                 if uploaded_files:
