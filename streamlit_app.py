@@ -533,7 +533,7 @@ def get_most_recent_match():
 
 def team_formation_section():
     """Team formation and match management section"""
-    st.header("Team Formation")
+    st.header("👥 Team Formation")
     
     all_players = get_all_available_players()
     player_names = [p["name"] for p in all_players]
@@ -631,7 +631,7 @@ def team_formation_section():
 
 def match_recording_section():
     """Match recording section"""
-    st.header("Record Match Results")
+    st.header("✍️ Record Match Results")
     
     if not (st.session_state.current_teams["team_a"] and st.session_state.current_teams["team_b"]):
         st.warning("Generate teams first before recording match results.")
@@ -671,7 +671,7 @@ def match_recording_section():
 
 def statistics_section():
     """Statistics and analytics section"""
-    st.header("Statistics & Analytics")
+    st.header("📊 Statistics & Analytics")
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["Player Stats", "Match History", "Team Analysis", "Performance Over Time", "Advanced Analytics"])
 
     with tab1:
