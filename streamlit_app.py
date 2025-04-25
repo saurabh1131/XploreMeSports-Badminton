@@ -11,8 +11,6 @@ import pytz
 import shutil
 
 # for plotting
-# import matplotlib.pyplot as plt
-# import seaborn as sns
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
@@ -183,25 +181,44 @@ def get_all_available_players():
 
 def generate_random_teams(players, previous_teams=None):
     """Generate random teams with consideration for player sitting out history"""
-    min_players_required = 4 if st.session_state.match_type == "doubles" else 2
+    # Log the match type for debugging
+    logger.info(f"Generating teams for match type: {st.session_state.match_type}")
+    
+    min_players_required = 4 if st.session_state.match_type.lower() == "doubles" else 2
     if len(players) < min_players_required:
+        logger.warning(f"Not enough players: {len(players)} available, need {min_players_required}")
         return None, None
     
     waiting_priority = []
     for player in players:
-        sat_out_count = st.session_state.player_rotation_history.get(player["id"], {}).get("sat_out_count", 0)
+        sat_out_count = np.random.randint(1, 100) #st.session_state.player_rotation_history.get(player["id"], {}).get("sat_out_count", 0)
         waiting_priority.append((player, sat_out_count))
     
     waiting_priority.sort(key=lambda x: x[1], reverse=True)
-    players_per_team = 2 if st.session_state.match_type == "doubles" else 1
+    players_per_team = 2 if st.session_state.match_type.lower() == "doubles" else 1
     total_players_needed = players_per_team * 2
+    
+    logger.info(f"Players per team: {players_per_team}, Total players needed: {total_players_needed}")
     
     selected_players = [p[0] for p in waiting_priority[:total_players_needed]]
     waiting_players = [p[0] for p in waiting_priority[total_players_needed:]]
     
+    # Validate the number of selected players
+    if len(selected_players) < total_players_needed:
+        logger.warning(f"Could not select enough players: {len(selected_players)} selected, needed {total_players_needed}")
+        return None, None
+    
     random.shuffle(selected_players)
     team_a = selected_players[:players_per_team]
     team_b = selected_players[players_per_team:total_players_needed]
+    
+    logger.info(f"Team A: {[p['name'] for p in team_a]}")
+    logger.info(f"Team B: {[p['name'] for p in team_b]}")
+    
+    # Validate team sizes
+    if len(team_a) != players_per_team or len(team_b) != players_per_team:
+        logger.error(f"Team size mismatch: Team A has {len(team_a)}, Team B has {len(team_b)}, expected {players_per_team} per team")
+        return None, None
     
     for player in selected_players:
         if player["id"] not in st.session_state.player_rotation_history:
@@ -387,11 +404,8 @@ def header_section():
 
 def footer_section():
     """App Footer section with visitor counter"""
-    
-    # Path to the visitor count JSON file
     visitor_file = 'visitor_count.json'
     
-    # Initialize or load the visitor count
     if 'visitor_counted' not in st.session_state:
         st.session_state.visitor_counted = False
         
@@ -405,20 +419,14 @@ def footer_section():
         else:
             visitor_count = 0
         
-        # Increment the count for this session only
         visitor_count += 1
         
-        # Save the updated count
         with open(visitor_file, 'w') as f:
             json.dump({'count': visitor_count}, f)
         
-        # Mark this session as counted
         st.session_state.visitor_counted = True
-        
-        # Add the file to the backup list for Google Drive
         push_to_gdrive(visitor_count=True)
     else:
-        # Read the current count without incrementing
         if os.path.exists(visitor_file):
             try:
                 with open(visitor_file, 'r') as f:
@@ -449,7 +457,6 @@ def footer_section():
         """,
         unsafe_allow_html=True
     )
-
 
 def player_management_section():
     """Player management section"""
@@ -531,7 +538,6 @@ def player_management_section():
 def get_most_recent_match():
     """Get the most recent match from match history"""
     if st.session_state.match_history:
-        # Sort matches by timestamp (most recent first)
         sorted_matches = sorted(st.session_state.match_history, 
                                key=lambda x: datetime.datetime.strptime(x["timestamp"], "%Y-%m-%d %H:%M:%S"), 
                                reverse=True)
@@ -548,19 +554,16 @@ def team_formation_section():
     # Add match type selector
     col1, col2 = st.columns([1, 3])
     with col1:
-        st.session_state.match_type = st.selectbox(
+        match_type_display = st.selectbox(
             "Match Type:",
             options=["Doubles", "Singles"],
-            index=0 if st.session_state.match_type == "doubles" else 1,
+            index=0 if st.session_state.match_type.lower() == "doubles" else 1,
             key="match_type_select"
         )
-    # with col2:
-    #     if st.session_state.match_type == "doubles":
-    #         st.info("Doubles Mode: Teams of 2 players each")
-    #     else:
-    #         st.info("Singles Mode: 1 player per team")
+        # Map the display value to the internal value
+        st.session_state.match_type = match_type_display.lower()
+        logger.info(f"Match type set to: {st.session_state.match_type}")
     
-    # Rest of the function remains unchanged
     st.subheader("Select Available Players")
     available_players = []
     num_cols = 3
@@ -572,14 +575,23 @@ def team_formation_section():
             if is_selected:
                 available_players.append(player)
     
+    # Combine selected players with waiting queue players
+    combined_players = list(available_players) + st.session_state.waiting_queue
+    # Remove duplicates based on player ID
+    combined_players_dict = {player["id"]: player for player in combined_players}
+    combined_players = list(combined_players_dict.values())
+    
+    logger.info(f"Combined players for team generation: {[p['name'] for p in combined_players]}")
+    
     st.subheader("Team Generation")
     col1, col2 = st.columns(2)
     
     min_players_required = 4 if st.session_state.match_type == "doubles" else 2
     
     with col1:
-        if st.button("Generate Random Teams", key="gen_teams", disabled=len(available_players) < min_players_required):
-            team_a, team_b = generate_random_teams(available_players)
+        if st.button("Generate Random Teams", key="gen_teams", disabled=len(combined_players) < min_players_required):
+            logger.info(f"Generating teams with {len(combined_players)} available players")
+            team_a, team_b = generate_random_teams(combined_players)
             if team_a and team_b:
                 st.session_state.current_teams = {"team_a": team_a, "team_b": team_b}
                 st.success("Teams generated successfully!")
@@ -588,20 +600,16 @@ def team_formation_section():
                 st.error(f"Not enough players. Need at least {min_players_required} players.")
     
     with col2:
-        # Get most recent match
         last_match = get_most_recent_match()
         
         if st.button("Rematch with Last Teams", key="rematch", disabled=not last_match):
             if last_match:
-                # Get player objects from the last match
                 team_a_players = [get_player_by_id(pid) for pid in last_match["team_a"]]
                 team_b_players = [get_player_by_id(pid) for pid in last_match["team_b"]]
                 
-                # Filter out any None values (in case a player was deleted)
                 team_a_players = [p for p in team_a_players if p]
                 team_b_players = [p for p in team_b_players if p]
                 
-                # Set match type based on number of players in teams
                 if len(team_a_players) == 1 and len(team_b_players) == 1:
                     st.session_state.match_type = "singles"
                 else:
@@ -624,16 +632,13 @@ def team_formation_section():
             for player in st.session_state.current_teams["team_b"]:
                 st.write(f"• {player['name']}")
     elif last_match:
-        # Display last match teams even if not selected for current session
         st.subheader("Last Match Teams")
         
-        # Display the match score
         score_a = last_match["score_a"]
         score_b = last_match["score_b"]
         winner = "A" if score_a > score_b else "B"
         st.markdown(f"**Last Match Score:** Team A - {score_a}  |  Team B - {score_b}  |  Winner: Team {winner}")
         
-        # Display the match timestamp
         match_time = datetime.datetime.strptime(last_match["timestamp"], "%Y-%m-%d %H:%M:%S")
         st.markdown(f"**Played on:** {match_time.strftime('%Y-%m-%d at %H:%M')}")
         
@@ -649,7 +654,6 @@ def team_formation_section():
             for name in team_b_names:
                 st.write(f"• {name}")
         
-        # Display any match notes if they exist
         if last_match.get("notes"):
             st.markdown(f"**Match Notes:** {last_match['notes']}")
             
@@ -835,19 +839,16 @@ def statistics_section():
     with tab5:
         st.subheader("Advanced Analytics")
         if st.session_state.match_history:
-            # Ensure win_rate is calculated
             df_players = pd.DataFrame(all_players)
             df_players["win_rate"] = df_players.apply(
                 lambda x: round((x["wins"] / x["games_played"]) * 100, 1) if x["games_played"] > 0 else 0, axis=1
             )
 
-            # Skill Level vs. Performance
             st.subheader("Skill Level vs. Performance")
             fig = px.box(df_players, x="skill_level", y="win_rate", title="Win Rate Distribution by Skill Level",
                           labels={"win_rate": "Win Rate (%)", "skill_level": "Skill Level"})
             st.plotly_chart(fig, use_container_width=True)
 
-            # Player Consistency
             st.subheader("Player Consistency")
             df_players["points_std_dev"] = df_players.apply(
                 lambda x: np.std(x["points_scored"]) if x["games_played"] > 1 else 0, axis=1
@@ -857,7 +858,6 @@ def statistics_section():
             fig.update_layout(xaxis_tickangle=-45)
             st.plotly_chart(fig, use_container_width=True)
 
-            # Head-to-Head Matchups
             st.subheader("Head-to-Head Matchups")
             head_to_head = defaultdict(lambda: {"wins": 0, "losses": 0})
             for match in st.session_state.match_history:
@@ -889,7 +889,6 @@ def statistics_section():
         else:
             st.info("No advanced analytics data available yet.")
 
-# Chatbot section
 def chatbot_section():
     """Chatbot interaction section"""
     st.header("🤖 BadmintonBuddy AI-Assistant")
@@ -990,7 +989,7 @@ Give your answer in a clear, buddy-like way, using headings or bullet points if 
             user_ask=user_query
         )
         message = HumanMessage(content=prompt)
-        response = model.invoke([message])  # Updated to use invoke instead of __call__
+        response = model.invoke([message])
         
         return response.content
     except Exception as e:
