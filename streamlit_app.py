@@ -868,22 +868,28 @@ Give your answer in a clear, buddy-like way, using headings or bullet points if 
     except Exception as e:
         return f"An error occurred: {str(e)}"
 
-
 def get_drive_service():
-    """Get authenticated Google Drive service using a service account."""
+    """Get authenticated Google Drive service using Streamlit Secrets."""
     try:
-        # Define the required scopes
+        logger.info("Loading service account credentials from Streamlit Secrets")
         SCOPES = ['https://www.googleapis.com/auth/drive.file']
         
-        # Path to the service account key JSON file
-        SERVICE_ACCOUNT_FILE = 'service-account-key.json'
+        # Load credentials from Streamlit Secrets
+        credentials_json = st.secrets.get("GOOGLE_CREDENTIALS")
+        if not credentials_json:
+            logger.error("GOOGLE_CREDENTIALS not found in Streamlit Secrets")
+            return None
         
-        # Load credentials from the service account key file
-        creds = service_account.Credentials.from_service_account_file(
-            SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+        # Parse the JSON string
+        credentials_dict = json.loads(credentials_json)
         
-        # Build the Drive service
-        drive_service = build('drive', 'v3', credentials=creds)
+        # Create credentials object
+        creds = service_account.Credentials.from_service_account_info(
+            credentials_dict, scopes=SCOPES)
+        
+        logger.info("Building Google Drive service")
+        drive_service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+        logger.info("Google Drive service created successfully")
         return drive_service
     
     except Exception as e:
