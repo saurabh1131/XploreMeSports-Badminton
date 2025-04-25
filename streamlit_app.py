@@ -446,7 +446,7 @@ def footer_section():
 
 def player_management_section():
     """Player management section"""
-    st.header("Player Management")
+    st.header("🤾 Player Management")
     
     col1, col2 = st.columns(2)
     
