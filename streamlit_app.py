@@ -521,6 +521,16 @@ def player_management_section():
             st.success("Cleared all temporary players!")
             st.rerun()
 
+def get_most_recent_match():
+    """Get the most recent match from match history"""
+    if st.session_state.match_history:
+        # Sort matches by timestamp (most recent first)
+        sorted_matches = sorted(st.session_state.match_history, 
+                               key=lambda x: datetime.datetime.strptime(x["timestamp"], "%Y-%m-%d %H:%M:%S"), 
+                               reverse=True)
+        return sorted_matches[0]
+    return None
+
 def team_formation_section():
     """Team formation and match management section"""
     st.header("Team Formation")
@@ -553,19 +563,50 @@ def team_formation_section():
                 st.error("Not enough players to form two teams. Need at least 4 players.")
     
     with col2:
-        if st.button("Rematch with Same Teams", key="rematch", disabled=not (st.session_state.current_teams["team_a"] and st.session_state.current_teams["team_b"])):
-            st.success("Teams kept for rematch!")
+        # Get most recent match
+        last_match = get_most_recent_match()
+        
+        if st.button("Rematch with Last Teams", key="rematch", disabled=not last_match):
+            if last_match:
+                # Get player objects from the last match
+                team_a_players = [get_player_by_id(pid) for pid in last_match["team_a"]]
+                team_b_players = [get_player_by_id(pid) for pid in last_match["team_b"]]
+                
+                # Filter out any None values (in case a player was deleted)
+                team_a_players = [p for p in team_a_players if p]
+                team_b_players = [p for p in team_b_players if p]
+                
+                st.session_state.current_teams = {"team_a": team_a_players, "team_b": team_b_players}
+                st.success("Teams loaded for rematch from last match!")
+                st.rerun()
+            else:
+                st.error("No previous match found for rematch.")
     
     if st.session_state.current_teams["team_a"] and st.session_state.current_teams["team_b"]:
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("Team A")
             for player in st.session_state.current_teams["team_a"]:
-                st.write(f"• {player['name']} (Skill: {player['skill_level']})")
+                st.write(f"• {player['name']}")
         with col2:
             st.subheader("Team B")
             for player in st.session_state.current_teams["team_b"]:
-                st.write(f"• {player['name']} (Skill: {player['skill_level']})")
+                st.write(f"• {player['name']}")
+    elif last_match:
+        # Display last match teams even if not selected for current session
+        st.subheader("Last Match Teams")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**Team A (Last Match)**")
+            team_a_names = [get_player_by_id(pid)["name"] for pid in last_match["team_a"] if get_player_by_id(pid)]
+            for name in team_a_names:
+                st.write(f"• {name}")
+        with col2:
+            st.markdown("**Team B (Last Match)**")
+            team_b_names = [get_player_by_id(pid)["name"] for pid in last_match["team_b"] if get_player_by_id(pid)]
+            for name in team_b_names:
+                st.write(f"• {name}")
+        st.info("Click 'Rematch with Last Teams' above to use these teams again.")
     
     if st.session_state.waiting_queue:
         st.subheader("Players Waiting")
