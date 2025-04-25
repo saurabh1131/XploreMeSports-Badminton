@@ -550,7 +550,7 @@ def team_formation_section():
     with col1:
         st.session_state.match_type = st.selectbox(
             "Match Type:",
-            options=["doubles", "singles"],
+            options=["Doubles", "Singles"],
             index=0 if st.session_state.match_type == "doubles" else 1,
             key="match_type_select"
         )
