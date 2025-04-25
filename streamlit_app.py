@@ -858,7 +858,7 @@ def statistics_section():
 # Chatbot section
 def chatbot_section():
     """Chatbot interaction section"""
-    st.header("BadmintonBuddy AI-Assistant 🤖")
+    st.header("🤖 BadmintonBuddy AI-Assistant")
     st.write("Ask questions about your badminton data, players, statistics, and match history!")
     
     for message in st.session_state.chat_history:
