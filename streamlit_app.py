@@ -452,7 +452,7 @@ def footer_section():
             }}
         </style>
         <div id="footer">
-            Built by <b>XploreMe@Sports</b> with 🧡〔Visitors: {visitor_count}〕
+            Built by <b>XploreMe@Sports</b> with 🧡〔Visits: {visitor_count}〕
         </div>
         """,
         unsafe_allow_html=True
