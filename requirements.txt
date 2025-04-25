@@ -1,8 +1,7 @@
 streamlit
-seaborn
-matplotlib
 pytz
 langchain
 langchain-google-genai
 google-auth-oauthlib
 google-api-python-client
+plotly

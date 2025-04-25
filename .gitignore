@@ -164,3 +164,4 @@ cython_debug/
 #.idea/
 badminton_data.json
 chat_history.json
+badminton_data.json.bak

@@ -2,8 +2,6 @@ import streamlit as st
 import random
 import pandas as pd
 import datetime
-import matplotlib.pyplot as plt
-import seaborn as sns
 import uuid
 import json
 import os
@@ -11,6 +9,13 @@ from collections import defaultdict
 import hashlib
 import pytz
 import shutil
+
+# for plotting
+# import matplotlib.pyplot as plt
+# import seaborn as sns
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
 
 # llm setup
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -374,11 +379,19 @@ def header_section():
     st.markdown("Manage your badminton matches, teams, and stats!")
 
 def footer_section():
-    """App Footer section"""
+    """App Footer section with visitor counter"""
+
+    # Initialize the visitor count in session state if it doesn't exist
+    if 'visitor_count' not in st.session_state:
+        st.session_state.visitor_count = 0
+
+    # Increment the visitor count
+    st.session_state.visitor_count += 1
+
     st.markdown(
-        """
+        f"""
         <style>
-            #footer {
+            #footer {{
                 position: fixed;
                 bottom: 10px;
                 left: 50%;
@@ -387,14 +400,15 @@ def footer_section():
                 color: gray;
                 text-align: center;
                 z-index: 1000;
-            }
+            }}
         </style>
         <div id="footer">
-            Built by <b>XploreMe@Sports</b> with 🧡
+            Built by <b>XploreMe@Sports</b> with 🧡 | Visitors: {st.session_state.visitor_count}
         </div>
         """,
         unsafe_allow_html=True
     )
+
 
 def player_management_section():
     """Player management section"""
@@ -567,8 +581,8 @@ def match_recording_section():
 def statistics_section():
     """Statistics and analytics section"""
     st.header("Statistics & Analytics")
-    tab1, tab2, tab3 = st.tabs(["Player Stats", "Match History", "Team Analysis"])
-    
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Player Stats", "Match History", "Team Analysis", "Performance Over Time", "Advanced Analytics"])
+
     with tab1:
         st.subheader("Player Performance")
         all_players = st.session_state.predefined_players + st.session_state.temp_players
@@ -586,31 +600,21 @@ def statistics_section():
                 col1, col2 = st.columns(2)
                 with col1:
                     st.subheader("Win Rate by Player")
-                    fig, ax = plt.subplots(figsize=(10, 6))
-                    active_players = df_players[df_players["games_played"] > 0].sort_values("win_rate", ascending=False)
-                    sns.barplot(x="name", y="win_rate", data=active_players, ax=ax)
-                    plt.xticks(rotation=45, ha="right")
-                    plt.ylabel("Win Rate (%)")
-                    plt.xlabel("")
-                    plt.tight_layout()
-                    st.pyplot(fig)
+                    fig = px.bar(df_players[df_players["games_played"] > 0].sort_values("win_rate", ascending=False),
+                                 x="name", y="win_rate", title="Win Rate by Player",
+                                 labels={"win_rate": "Win Rate (%)", "name": "Player Name"})
+                    fig.update_layout(xaxis_tickangle=-45)
+                    st.plotly_chart(fig, use_container_width=True)
                 with col2:
                     st.subheader("Games Played vs Wins")
-                    fig, ax = plt.subplots(figsize=(10, 6))
-                    df_melt = pd.melt(
-                        active_players,
-                        id_vars=["name"],
-                        value_vars=["games_played", "wins"],
-                        var_name="Metric",
-                        value_name="Count"
-                    )
-                    sns.barplot(x="name", y="Count", hue="Metric", data=df_melt, ax=ax)
-                    plt.xticks(rotation=45, ha="right")
-                    plt.tight_layout()
-                    st.pyplot(fig)
+                    fig = go.Figure()
+                    fig.add_trace(go.Bar(x=df_players["name"], y=df_players["games_played"], name="Games Played"))
+                    fig.add_trace(go.Bar(x=df_players["name"], y=df_players["wins"], name="Wins"))
+                    fig.update_layout(barmode='group', xaxis_tickangle=-45, title="Games Played vs Wins")
+                    st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("No player statistics available yet.")
-    
+
     with tab2:
         st.subheader("Match History")
         if st.session_state.match_history:
@@ -630,7 +634,6 @@ def statistics_section():
             df_matches = pd.DataFrame(match_data)
             st.dataframe(df_matches, use_container_width=True)
             st.subheader("Match Score Distribution")
-            fig, ax = plt.subplots(figsize=(10, 6))
             scores_data = []
             for match in st.session_state.match_history:
                 scores_data.append({
@@ -639,20 +642,12 @@ def statistics_section():
                     "Team B": match["score_b"]
                 })
             df_scores = pd.DataFrame(scores_data)
-            df_melt = pd.melt(
-                df_scores,
-                id_vars=["Match"],
-                value_vars=["Team A", "Team B"],
-                var_name="Team",
-                value_name="Score"
-            )
-            sns.barplot(x="Match", y="Score", hue="Team", data=df_melt, ax=ax)
-            plt.xticks(rotation=45, ha="right")
-            plt.tight_layout()
-            st.pyplot(fig)
+            fig = px.bar(df_scores, x="Match", y=["Team A", "Team B"], title="Match Score Distribution", barmode='group')
+            fig.update_layout(xaxis_tickangle=-45)
+            st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("No match history available yet.")
-    
+
     with tab3:
         st.subheader("Team Analysis")
         if st.session_state.match_history:
@@ -682,16 +677,92 @@ def statistics_section():
             df_teams = pd.DataFrame(team_data)
             st.dataframe(df_teams.sort_values(by="Win Rate (%)", ascending=False), use_container_width=True)
             st.subheader("Team Win Rates")
-            fig, ax = plt.subplots(figsize=(10, 6))
-            df_teams_sorted = df_teams.sort_values(by="Win Rate (%)", ascending=False)
-            if len(df_teams_sorted) > 10:
-                df_teams_sorted = df_teams_sorted.head(10)
-            sns.barplot(x="Team", y="Win Rate (%)", data=df_teams_sorted, ax=ax)
-            plt.xticks(rotation=45, ha="right")
-            plt.tight_layout()
-            st.pyplot(fig)
+            fig = px.bar(df_teams.sort_values(by="Win Rate (%)", ascending=False).head(10),
+                          x="Team", y="Win Rate (%)", title="Team Win Rates",
+                          labels={"Win Rate (%)": "Win Rate (%)", "Team": "Team Composition"})
+            fig.update_layout(xaxis_tickangle=-45)
+            st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("No team statistics available yet.")
+
+    with tab4:
+        st.subheader("Player Performance Over Time")
+        if st.session_state.match_history:
+            player_performance = defaultdict(lambda: {"dates": [], "cumulative_wins": [], "cumulative_points": []})
+            for match in st.session_state.match_history:
+                timestamp = pd.to_datetime(match["timestamp"])
+                for pid in match["team_a"] + match["team_b"]:
+                    player = get_player_by_id(pid)
+                    if player:
+                        player_performance[player["name"]]["dates"].append(timestamp)
+                        player_performance[player["name"]]["cumulative_wins"].append(player["wins"])
+                        player_performance[player["name"]]["cumulative_points"].append(player["points_scored"])
+
+            for player_name, data in player_performance.items():
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=data["dates"], y=data["cumulative_wins"], mode='lines+markers', name='Cumulative Wins'))
+                fig.add_trace(go.Scatter(x=data["dates"], y=data["cumulative_points"], mode='lines+markers', name='Cumulative Points'))
+                fig.update_layout(title=f"{player_name}'s Performance Over Time", xaxis_title="Date", yaxis_title="Cumulative Count")
+                st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No performance data available yet.")
+
+    with tab5:
+        st.subheader("Advanced Analytics")
+        if st.session_state.match_history:
+            # Ensure win_rate is calculated
+            df_players = pd.DataFrame(all_players)
+            df_players["win_rate"] = df_players.apply(
+                lambda x: round((x["wins"] / x["games_played"]) * 100, 1) if x["games_played"] > 0 else 0, axis=1
+            )
+
+            # Skill Level vs. Performance
+            st.subheader("Skill Level vs. Performance")
+            fig = px.box(df_players, x="skill_level", y="win_rate", title="Win Rate Distribution by Skill Level",
+                          labels={"win_rate": "Win Rate (%)", "skill_level": "Skill Level"})
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Player Consistency
+            st.subheader("Player Consistency")
+            df_players["points_std_dev"] = df_players.apply(
+                lambda x: np.std(x["points_scored"]) if x["games_played"] > 1 else 0, axis=1
+            )
+            fig = px.bar(df_players, x="name", y="points_std_dev", title="Player Consistency",
+                         labels={"points_std_dev": "Standard Deviation of Points Scored", "name": "Player Name"})
+            fig.update_layout(xaxis_tickangle=-45)
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Head-to-Head Matchups
+            st.subheader("Head-to-Head Matchups")
+            head_to_head = defaultdict(lambda: {"wins": 0, "losses": 0})
+            for match in st.session_state.match_history:
+                for pid_a in match["team_a"]:
+                    for pid_b in match["team_b"]:
+                        player_a = get_player_by_id(pid_a)
+                        player_b = get_player_by_id(pid_b)
+                        if player_a and player_b:
+                            key = tuple(sorted([player_a["name"], player_b["name"]]))
+                            if match["winning_team"] == "A":
+                                head_to_head[key]["wins"] += 1
+                            else:
+                                head_to_head[key]["losses"] += 1
+
+            head_to_head_data = []
+            for players, stats in head_to_head.items():
+                win_rate = round((stats["wins"] / (stats["wins"] + stats["losses"])) * 100, 1) if (stats["wins"] + stats["losses"]) > 0 else 0
+                head_to_head_data.append({
+                    "Players": f"{players[0]} vs {players[1]}",
+                    "Win Rate (%)": win_rate
+                })
+
+            df_head_to_head = pd.DataFrame(head_to_head_data)
+            fig = px.bar(df_head_to_head, x="Players", y="Win Rate (%)", title="Head-to-Head Win Rates",
+                         labels={"Win Rate (%)": "Win Rate (%)", "Players": "Players Matchup"})
+            fig.update_layout(xaxis_tickangle=-45)
+            st.plotly_chart(fig, use_container_width=True)
+
+        else:
+            st.info("No advanced analytics data available yet.")
 
 # Chatbot section
 def chatbot_section():
