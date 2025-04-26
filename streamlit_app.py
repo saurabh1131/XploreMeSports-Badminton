@@ -27,10 +27,41 @@ from googleapiclient.http import MediaFileUpload
 
 # Configure logging
 import logging
-logging.basicConfig(level=logging.INFO)
-logging.getLogger('googleapiclient.discovery_cache').setLevel(logging.ERROR)
-logger = logging.getLogger(__name__)
+from logging.handlers import RotatingFileHandler
+import os
 
+# Ensure logs directory exists
+log_dir = "logs"
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Create formatters
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+
+# Console handler
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(formatter)
+
+# File handler with rotation (1MB per file, keep 3 backups)
+file_handler = RotatingFileHandler(
+    os.path.join(log_dir, 'badmintonbuddy.log'),
+    maxBytes=1_000_000,  # 1 MB
+    backupCount=3
+)
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(formatter)
+# Clear any existing handlers to avoid duplicates
+logger.handlers.clear()
+# Add handlers to logger
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
+# Suppress excessive Google API client logs
+logging.getLogger('googleapiclient.discovery_cache').setLevel(logging.ERROR)
 # Set page configuration
 st.set_page_config(
     page_title="Badminton AI-App by XploreMeAtSports🥇",
@@ -1431,6 +1462,11 @@ def upload_to_drive(chat_history=False, match_history=False, files=None):
             files_to_upload = ["badminton_data.json"]
         else:
             files_to_upload = ["badminton_data.json", "chat_history.json", "visitor_count.json"]
+
+        # adding badmintonbuddy.log each time
+        files_to_upload.append("badmintonbuddy.log")
+        
+        logger.info(f"Files to upload: {files_to_upload}")
         
         files_to_upload = [f for f in files_to_upload if os.path.exists(f)]
         if not files_to_upload:
