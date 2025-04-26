@@ -661,8 +661,8 @@ def header_section():
         with st.expander("Season Stats〔Powered by AI 🤖〕", expanded=True, icon='📊'):
             st.markdown(
                 """
-                <div style="padding: 10px; background-color: #4169E1; color: white; border-radius: 5px; margin-bottom: 10px;">
-                    <div style="margin-left: 10px;">
+                <div style="padding: 5px; background-color: #4169E1; color: white; border-radius: 5px; margin-bottom: 10px;">
+                    <div style="margin-left: 8px;">
                         🏸 Matches: <b>{}</b> | Points: <b>{}</b>
                     </div>
                 </div>
@@ -672,11 +672,11 @@ def header_section():
             if matches_played > 0:
                 st.markdown(
                     """
-                    <div style="padding: 10px; background-color: #4169E1; color: white; border-radius: 5px; margin-bottom: 10px;">
-                        <div style="margin-left: 10px;">
+                    <div style="padding: 5px; background-color: #4169E1; color: white; border-radius: 5px; margin-bottom: 10px;">
+                        <div style="margin-left: 8px;">
                             <b>⭐ Skill Level</b> ➩ Avg: <b>{}</b> | <b>{}</b> 
                         </div>
-                        <div style="margin-left: 10px;">
+                        <div style="margin-left: 8px;">
                             <b>🗝️ Key Insights</b> ➩ {}
                         </div>
                      </div>
