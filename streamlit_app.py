@@ -386,7 +386,7 @@ def process_prompt_match_result(prompt):
         model = ChatGoogleGenerativeAI(
             model=st.session_state.llm_model,
             google_api_key=st.session_state.api_key,
-            temperature=0.5
+            temperature=0.1
         )
         
         ist = pytz.timezone('Asia/Kolkata')
@@ -1515,7 +1515,7 @@ Give your answer in a clear, buddy-like way, using headings or bullet points if 
         model = ChatGoogleGenerativeAI(
             model=st.session_state.llm_model,
             google_api_key=st.session_state.api_key,
-            temperature=0.5
+            temperature=0.3
         )
         
         prompt = prompt_template.format(
