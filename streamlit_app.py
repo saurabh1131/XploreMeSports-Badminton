@@ -31,7 +31,7 @@ from logging.handlers import RotatingFileHandler
 import os
 
 # Ensure logs directory exists
-log_dir = "logs"
+log_dir = "."
 if not os.path.exists(log_dir):
     os.makedirs(log_dir)
 
@@ -381,6 +381,8 @@ def process_prompt_match_result(prompt):
 {json.dumps(badminton_data, indent=2)}
 """
         
+        logger.info(f"Processing prompt: {prompt}")
+        
         model = ChatGoogleGenerativeAI(
             model=st.session_state.llm_model,
             google_api_key=st.session_state.api_key,
@@ -394,7 +396,7 @@ def process_prompt_match_result(prompt):
         response = model.invoke([message])
         
         # Log the raw response for debugging
-        logger.info(f"LLM raw response: {response.content}")
+        logger.info(f"Raw LLM response: {response.content}")
         
         # Parse the response
         response_content = response.content.strip()
@@ -576,6 +578,47 @@ def admin_authentication():
                 if st.button("Sync Restored Files to Google Drive", key="sync_to_gdrive"):
                     success = upload_to_drive()
                     st.success("Files synced to Google Drive!" if success else "Sync failed. Check logs.")
+
+                # New Feature: List and Download Files
+                st.subheader("List and Download Files")
+                if not st.session_state.is_super_admin:
+                    st.info("Super admin access required to list and download files.")
+                else:
+                    # List files in working directory
+                    try:
+                        files = [f for f in os.listdir(os.getcwd()) if os.path.isfile(os.path.join(os.getcwd(), f))]
+                        if not files:
+                            st.info("No files found in the working directory.")
+                        else:
+                            logger.info("Listing files in working directory")
+                            selected_file = st.selectbox("Select a file to download", files, key="download_file_select")
+                            
+                            if selected_file:
+                                file_path = os.path.join(os.getcwd(), selected_file)
+                                # Determine MIME type based on file extension
+                                mime_type = (
+                                    "application/json" if selected_file.endswith(".json") else
+                                    "text/plain" if selected_file.endswith(".log") else
+                                    "application/octet-stream"
+                                )
+                                try:
+                                    with open(file_path, "rb") as f:
+                                        file_content = f.read()
+                                    if st.download_button(
+                                        label=f"Download {selected_file}",
+                                        data=file_content,
+                                        file_name=selected_file,
+                                        mime=mime_type,
+                                        key=f"download_{selected_file}"
+                                    ):
+                                        logger.info(f"Downloaded file: {selected_file}")
+                                        st.success(f"Downloaded {selected_file} successfully!")
+                                except Exception as e:
+                                    logger.error(f"Error reading file {selected_file}: {str(e)}")
+                                    st.error(f"Failed to read {selected_file}: {str(e)}")
+                    except Exception as e:
+                        logger.error(f"Error listing files in working directory: {str(e)}")
+                        st.error(f"Failed to list files: {str(e)}")          
         else:
             st.info("Login to access super admin features")
             super_admin_password = st.text_input("Super Admin Password", type="password", key="super_admin_pass")
@@ -964,8 +1007,10 @@ def match_recording_section():
                 
                 # Confirm and record button
                 if st.button("Confirm and Record", key="confirm_record"):
+                    logger.info(f"Recording match from prompt: {match_prompt}")
                     record_result = record_prompt_match_result(st.session_state.pending_match_record)
                     if record_result.startswith("Error:"):
+                        logger.error(f"Failed to record match: {record_result}")
                         st.error(record_result)
                     else:
                         st.success("Match recorded successfully!")
@@ -980,6 +1025,7 @@ def delete_selected_matches(selected_rows):
             return "Error: No matches selected for deletion."
 
         selected_match_ids = [row["Match ID"] for row in selected_rows]
+        logger.info(f"Deleting matches with IDs: {selected_match_ids}")
         # Validate match IDs
         for match_id in selected_match_ids:
             if not any(m["id"] == match_id for m in st.session_state.match_history):
@@ -1007,7 +1053,7 @@ def delete_selected_matches(selected_rows):
         # Save to file and upload to Google Drive
         save_data()
         push_to_gdrive(match_history=True)
-
+        logger.info(f"Successfully deleted {len(selected_match_ids)} match(es)")
         return f"Success: Deleted {len(selected_match_ids)} match(es) successfully!"
     except Exception as e:
         logger.error(f"Error deleting matches: {str(e)}")
@@ -1016,6 +1062,7 @@ def delete_selected_matches(selected_rows):
 def save_edited_match_history(edited_data, deleted_match_ids):
     """Save edited match history to session state and update player stats, excluding deleted matches"""
     try:
+        logger.info(f"Saving edited match history, excluding deleted matches: {deleted_match_ids}")
         # Filter out deleted matches
         edited_data = [row for row in edited_data if row["Match ID"] not in deleted_match_ids]
 
@@ -1073,7 +1120,7 @@ def save_edited_match_history(edited_data, deleted_match_ids):
         # Save to file and upload to Google Drive
         save_data()
         push_to_gdrive(match_history=True)
-
+        logger.info(f"Successfully updated {len(new_match_history)} matches")
         return "Success: Match history updated successfully!"
     except Exception as e:
         logger.error(f"Error saving edited match history: {str(e)}")
