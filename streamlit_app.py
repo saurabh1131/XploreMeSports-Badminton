@@ -1698,13 +1698,18 @@ def generate_llm_stats(match_history, players):
         ]
 
         # Construct LLM prompt with enhanced instructions
-        prompt = f"""You are BadmintonBuddy, an expert in analyzing badminton data. Your task is to:
+        prompt = f"""You are expert Mathematicians and statisticians in analyzing badminton data. 
+
+Your task is to:
 1. Assign a skill level (1-5, where 1 is beginner and 5 is expert) to each player based on their stats (games played, wins, win rate, avg points per game). Use: >80% win rate → 5, 60-80% → 4, 40-60% → 3, 20-40% → 2, <20% → 1.
 2. Generate 2-3 diverse, engaging, and concise interesting stats/facts about the season (e.g., top performer, best team combo, closest match, biggest comeback, most consistent player, dramatic moment) with specific details (e.g., scores, dates, players). Keep each under 60 characters.
 
 **Input Data**:
-- **Player Stats**: {json.dumps(player_stats, indent=2)}
-- **Match History (Recent)**: {json.dumps(match_summary, indent=2)}
+- **Player Stats**: 
+{json.dumps(player_stats, indent=2)}
+
+- **Match History (Recent)**: 
+{json.dumps(match_summary, indent=2)}
 
 **Instructions**:
 - For skills, prioritize win rate and avg points, adjusting for games played.
@@ -1727,7 +1732,7 @@ def generate_llm_stats(match_history, players):
         model = ChatGoogleGenerativeAI(
             model=st.session_state.llm_model,
             google_api_key=st.session_state.api_key,
-            temperature=0.01
+            temperature=0.0
         )
         message = HumanMessage(content=prompt)
         response = model.invoke([message])
