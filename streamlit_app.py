@@ -1728,7 +1728,7 @@ def generate_llm_stats(match_history, players):
         model = ChatGoogleGenerativeAI(
             model=st.session_state.llm_model,
             google_api_key=st.session_state.api_key,
-            temperature=0.7
+            temperature=0
         )
         message = HumanMessage(content=prompt)
         response = model.invoke([message])
