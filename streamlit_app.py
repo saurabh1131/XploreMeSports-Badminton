@@ -9,6 +9,7 @@ from collections import defaultdict
 import hashlib
 import pytz
 import shutil
+import time
 
 # for plotting
 import numpy as np
@@ -62,12 +63,17 @@ logger.addHandler(console_handler)
 logger.addHandler(file_handler)
 # Suppress excessive Google API client logs
 logging.getLogger('googleapiclient.discovery_cache').setLevel(logging.ERROR)
+
 # Set page configuration
 st.set_page_config(
     page_title="Badminton AI-App by XploreMeAtSports🥇",
     page_icon="🏸",
     layout="wide"
 )
+
+# Load timeout from environment variable (default 2 hours)
+ADMIN_SESSION_TIMEOUT = int(os.getenv("ADMIN_SESSION_TIMEOUT", 7200))  # Default 2 hours in seconds
+logger.info(f"Admin session timeout set to {ADMIN_SESSION_TIMEOUT} seconds")
 
 # Initialize session state variables if they don't exist
 if 'predefined_players' not in st.session_state:
@@ -491,14 +497,25 @@ def check_super_admin_session_timeout():
     return False
 
 # Admin and Super Admin authentication component
+def check_session_timeout(authenticated_time, role):
+    """Check if the session has timed out for the given role"""
+    if authenticated_time:
+        elapsed_time = (datetime.datetime.now() - authenticated_time).total_seconds()
+        if elapsed_time > ADMIN_SESSION_TIMEOUT:
+            logger.info(f"{role} session timed out after {elapsed_time} seconds")
+            return True
+    return False
+
 def admin_authentication():
     """Admin and Super Admin login/logout component"""
     with st.sidebar:
         st.header("Admin Panel")
         
-        if st.session_state.is_admin:
-            if check_admin_session_timeout():
-                st.warning("Admin session has timed out. Please login again.")
+        # Admin Session Timeout Check
+        if st.session_state.get('is_admin') and check_session_timeout(st.session_state.get('admin_authenticated_time'), "Admin"):
+            st.warning("Admin session has timed out. Please login again.")
+            st.session_state.is_admin = False
+            st.session_state.admin_authenticated_time = None
         
         if st.session_state.is_admin:
             st.success("Logged in as Admin")
@@ -536,10 +553,11 @@ def admin_authentication():
                 else:
                     st.error("Incorrect password")
 
-        st.header("Super Admin Login")
-        if st.session_state.is_super_admin:
-            if check_super_admin_session_timeout():
-                st.warning("Super Admin session has timed out. Please login again.")
+        # Super Admin Session Timeout Check
+        if st.session_state.get('is_super_admin') and check_session_timeout(st.session_state.get('super_admin_authenticated_time'), "Super Admin"):
+            st.warning("Super Admin session has timed out. Please login again.")
+            st.session_state.is_super_admin = False
+            st.session_state.super_admin_authenticated_time = None
         
         if st.session_state.is_super_admin:
             st.success("Logged in as Super Admin")
@@ -579,12 +597,11 @@ def admin_authentication():
                     success = upload_to_drive()
                     st.success("Files synced to Google Drive!" if success else "Sync failed. Check logs.")
 
-                # New Feature: List and Download Files
+                # List and Download Files
                 st.subheader("List and Download Files")
                 if not st.session_state.is_super_admin:
                     st.info("Super admin access required to list and download files.")
                 else:
-                    # List files in working directory
                     try:
                         files = [f for f in os.listdir(os.getcwd()) if os.path.isfile(os.path.join(os.getcwd(), f))]
                         if not files:
@@ -592,10 +609,8 @@ def admin_authentication():
                         else:
                             logger.info("Listing files in working directory")
                             selected_file = st.selectbox("Select a file to download", files, key="download_file_select")
-                            
                             if selected_file:
                                 file_path = os.path.join(os.getcwd(), selected_file)
-                                # Determine MIME type based on file extension
                                 mime_type = (
                                     "application/json" if selected_file.endswith(".json") else
                                     "text/plain" if selected_file.endswith(".log") else
@@ -618,7 +633,7 @@ def admin_authentication():
                                     st.error(f"Failed to read {selected_file}: {str(e)}")
                     except Exception as e:
                         logger.error(f"Error listing files in working directory: {str(e)}")
-                        st.error(f"Failed to list files: {str(e)}")          
+                        st.error(f"Failed to list files: {str(e)}")
         else:
             st.info("Login to access super admin features")
             super_admin_password = st.text_input("Super Admin Password", type="password", key="super_admin_pass")
