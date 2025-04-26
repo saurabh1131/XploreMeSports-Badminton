@@ -283,7 +283,7 @@ def process_prompt_match_result(prompt):
               "score_a": <integer>,
               "score_b": <integer>,
               "winning_team": "A" or "B",
-              "notes": "NOTE: <gen-ai generated detailed notes>. PROPMT: <user prompt>"
+              "notes": "<generate detailed takeaway from the match>"
             }```
             """
 
@@ -295,21 +295,22 @@ def process_prompt_match_result(prompt):
               "score_a": 23,
               "score_b": 21,
               "winning_team": "A",
-              "notes": "NOTE: A thrilling 'Nowhere to Victory' comeback! Down 11-3, Saurabh and Golu battled back for an epic 23-21 win!. PROPMT: Record a match: Golu and Saurabh Played against Pavan and Shraddha. Saurabh's team won with 23-21. Another \"Nowhere to Victory\" type match. The score was 11-3 at one point, but it eventually came to a 21-23 victory!"
+              "notes": "A thrilling 'Nowhere to Victory' comeback! Down 11-3, Saurabh and Golu battled back for an epic 23-21 win!"
             }```
             """
         
-        prompt_text = f"""You are BadmintonBuddy, tasked with converting a user prompt describing a badminton match into a JSON match record. The prompt contains information about player names, teams, scores, and optional notes. Your job is to map player names to their IDs from the provided JSON data, determine the winning team, and create a match record in the specified format.
+        prompt_text = f"""You are BadmintonBuddy, an expert in generating JSON match records from user prompts describing badminton matches. Your task is to parse prompts containing player names, team compositions, scores, and optional notes, map player names to their IDs using provided JSON data, determine the winning team, and produce a structured JSON match record in the specified format.
 
 **Instructions**:
 1. **Parse the Prompt**:
    - Extract player names, team compositions (Team A and Team B), scores for each team, and any notes.
    - The prompt may describe a doubles match (two players per team) or a singles match (one player per team).
-   - Example prompt: "Pavan and Lala played against Saurabh and Golu. Pavan's team scored 21 points, Saurabh's team scored 18. Match was on court 1 with 2 temporary players."
+   - Example prompt for Doubles: "Pavan and Saurabh played against Shraddha and Golu. Pavan's team scored 21 points, Shraddha's team scored 18."
+   - Example prompt for Singles: "Pavan played against Golu. Pavan's team scored 18 points, Golu's team scored 21."
    - Notes are optional and may include details like court number or temporary players.
-
+   
 2. **Map Player Names to IDs**:
-   - Use the `predefined_players` and `temp_players` (if available) from the JSON data to find player IDs.
+   - Use the `predefined_players` and `temp_players` (if mentioned) from the JSON data to find player IDs.
    - Match player names case-insensitively.
    - If temporary players are mentioned, generate a random player ID for them.  If the temporary player is not mentioned and the name is not found, return an error message like "Error: Player <name> not found in the player list, advice to add the player."
 
@@ -317,8 +318,7 @@ def process_prompt_match_result(prompt):
    - Assign players to `team_a` and `team_b` based on the prompt.
    - Extract scores for Team A (`score_a`) and Team B (`score_b`) as integers.
    - Determine the `winning_team` as "A" if `score_a` > `score_b`, otherwise "B".
-   - Do not include `id` or `timestamp` in the output; these will be added later.
-   - Generate notes from provided info in the prompt in the `notes` field.
+   - Generate detailed notes from provided info in the prompt in the `notes` field.
 
 4. **Validate the Data**:
    - Ensure the number of players per team matches the match type (1 for singles, 2 for doubles).
@@ -326,15 +326,7 @@ def process_prompt_match_result(prompt):
    - Ensure all player IDs exist in the JSON data.
    - If the prompt is ambiguous or missing details (e.g., scores or teams), return an error message like "Error: Prompt missing required details (e.g., scores or team composition)."
 
-5. **Inputs**:
-
-**User Prompt**:
-{prompt}
-
-**Matches History JSON Data**:
-{json.dumps(badminton_data, indent=2)}
-
-6. **Output Format**:
+5. **Output Format**:
    - Return *only* a valid JSON object matching the format below, with no additional text, markdown, code blocks, or comments.
    - If any errors occur (e.g., unknown player, invalid scores, incorrect team sizes), return a string starting with "Error: " describing the issue.
 
@@ -347,6 +339,15 @@ def process_prompt_match_result(prompt):
 **Response**:
 - If successful, return the JSON match record as a dictionary (without `id` or `timestamp`).
 - If an error occurs, return a string starting with "Error: " describing the issue.
+
+
+6. **Inputs**:
+
+**User Prompt**:
+{prompt}
+
+**Matches History JSON Data with indent=2**:
+{json.dumps(badminton_data, indent=2)}
 """
         
         model = ChatGoogleGenerativeAI(
@@ -370,10 +371,6 @@ def process_prompt_match_result(prompt):
             return response_content
         try:
             response_content = response_content.replace("```", '').replace("json", '').strip()
-
-            logger.info(f"LLM raw response 2: {response_content}")
-
-
             match_record = json.loads(response_content)
             # Add UUID and timestamp
             match_record["id"] = str(uuid.uuid4())
@@ -1446,12 +1443,17 @@ def upload_to_drive(chat_history=False, match_history=False, files=None):
             return False
         
         ist = pytz.timezone('Asia/Kolkata')
-        timestamp = datetime.datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.datetime.now(ist).strftime("%d-%b-%Y")  # e.g., 25-Apr-2025
         target_folder_id = '1u5w1ESII4eCx9CE6LGp-ehPJd3rTriZf'
         
         uploaded_files = []
         for file_path in files_to_upload:
             file_name = os.path.basename(file_path)
+            # Append date to filename
+            base_name = file_name.rsplit('.', 1)[0]  # Get name without extension
+            extension = file_name.rsplit('.', 1)[1]  # Get extension
+            new_file_name = f"{base_name}_{timestamp}.{extension}"
+            
             query = f"name = '{file_name}' and trashed = false"
             
             response = drive_service.files().list(
@@ -1461,7 +1463,7 @@ def upload_to_drive(chat_history=False, match_history=False, files=None):
             ).execute()
             
             file_metadata = {
-                'name': file_name,
+                'name': new_file_name,
                 'parents': [target_folder_id]
             }
             
@@ -1491,14 +1493,14 @@ def upload_to_drive(chat_history=False, match_history=False, files=None):
                         fields='id'
                     ).execute()
             else:
-                logger.info(f"Uploading new file: {file_name}")
+                logger.info(f"Uploading new file: {new_file_name}")
                 file = drive_service.files().create(
                     body=file_metadata,
                     media_body=media,
                     fields='id'
                 ).execute()
             
-            uploaded_files.append(file_name)
+            uploaded_files.append(new_file_name)
         
         logger.info(f"Successfully uploaded {', '.join(uploaded_files)} to Google Drive")
         return True
