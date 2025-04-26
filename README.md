@@ -6,17 +6,20 @@
   <img src="https://img.freepik.com/free-psd/badminton-template-design_23-2151491185.jpg" alt="Badminton Court" width="600">
 </p>
 
-Welcome to **XploreMe@Sports - Badminton**, an interactive web application built with Streamlit to manage badminton matches, teams, and player statistics. This app is designed to help badminton enthusiasts track their games, analyze performance, and have fun with a built-in AI chatbot, "BadmintonBuddy." Whether you're organizing a casual match or diving into stats, this app has you covered!
+Welcome to **XploreMe@Sports - Badminton**, an interactive web application built with Streamlit to manage badminton matches, teams, and player statistics. Designed for enthusiasts, this app tracks games, analyzes performance, and offers AI-powered insights via "BadmintonBuddy," now enhanced with advanced LLM capabilities. Whether you're organizing matches or exploring stats, this app is your ultimate badminton companion!
 
 ---
 
 ## ✨ Features
-- **Player Management**: Add and manage predefined and temporary players with their skill levels.
-- **Team Formation**: Automatically generate random teams based on player availability and rotation history.
-- **Match Recording**: Log match results, scores, and notes, with admin-only access for security.
-- **Statistics & Analytics**: View detailed player stats, match history, and team performance with visualizations.
-- **BadmintonBuddy AI-Assistant**: Chat with an AI to ask questions about the data or get fun badminton insights.
-- **Theme Toggle**: Switch between light and dark themes with a default light mode for a personalized experience.
+- **Player Management**: Add and manage predefined and temporary players with AI-assigned skill levels (1-5).
+- **Team Formation**: Auto-generate balanced teams based on player availability, rotation history, and skills.
+- **Match Recording**: Log results, scores, and notes (admin-only), with LLM parsing of match prompts.
+- **Statistics & Analytics**: View detailed player stats, match history, team performance, and AI-generated insights with visualizations.
+- **BadmintonBuddy AI-Assistant**: Leverage LLM for match recording, skill assessment, interesting season stats, and interactive chats.
+- **Admin & Super Admin Features**: 
+  - Admin: Manage players, record matches, and view analytics.
+  - Super Admin: Edit match history, delete matches, restore backups, list/download files, and sync with Google Drive.
+- **Theme Toggle**: Switch between light and dark themes (default light) for a personalized experience.
 
 ---
 
@@ -36,9 +39,16 @@ Welcome to **XploreMe@Sports - Badminton**, an interactive web application built
    ```bash
    pip install -r requirements.txt
    ```
-3. Configure the Google API key for the AI assistant:
-   - Open `badminton_app.py` and update `st.session_state.api_key` with your Google API key.
-   - Ensure `st.session_state.llm_model` is set to a valid model (e.g., "gemini-2.0-flash-lite").
+3. Configure environment variables:
+   - Create a `.env` file in the root directory with:
+     ```
+     GOOGLE_API_KEY=your_google_api_key
+     ADMIN_PASSWORD=your_admin_password
+     SUPER_ADMIN_PASSWORD=your_super_admin_password
+     ```
+   - Alternatively, set these as environment variables in your system.
+4. Ensure Google Drive API credentials are set up:
+   - Place `service-account-key.json` in the working directory for Google Drive sync.
 
 ### Running the App
 1. Launch the Streamlit app:
@@ -50,34 +60,39 @@ Welcome to **XploreMe@Sports - Badminton**, an interactive web application built
 ---
 
 ## 🎮 Usage
-- **Admin Access**: Log in as an admin using the default password "admin123" (change it via the admin panel for security).
-- **Player Management**: Add players and clear temporary ones as needed.
-- **Team Formation**: Select available players and generate teams or rematch with the same lineup.
-- **Match Recording**: Record results after generating teams (admin-only).
-- **Statistics**: Explore tabs for player stats, match history, and team analysis with charts.
-- **Chatbot**: Ask "BadmintonBuddy" fun questions like "Is Golu the champ?" or "Who’s the best player?"
-- **Theme Settings**: Toggle between light and dark themes from the sidebar.
-
----
-
-## 💾 Data Storage
-- Player data, match history, and admin settings are saved to `badminton_data.json`.
-- Chat logs are stored in `chat_history.json` for reference.
+- **Login**:
+  - **Admin**: Log in with the `ADMIN_PASSWORD` (default "admin123", change via `.env`).
+  - **Super Admin**: Log in with the `SUPER_ADMIN_PASSWORD` (default "SuperAdmin123!", change via `.env`) for advanced controls.
+- **Player Management**: Add predefined/temporary players; view AI-assigned skill levels.
+- **Team Formation**: Select players and generate teams or rematch with the same lineup.
+- **Match Recording**: Enter results (e.g., "Golu and Saurabh vs Pavan and Shraddha, 23-21")—LLM parses and logs them (admin-only).
+- **Statistics**:
+  - Explore player stats, match history, team analysis, and performance trends.
+  - AI enhances with average skill, player skills, and interesting facts (e.g., "Saurabh: Biggest comeback from 11-3").
+- **Super Admin Features**:
+  - **Edit Match History**: Modify scores/notes in a table and save to `badminton_data.json`.
+  - **Delete Matches**: Remove matches with a checkbox and sync changes.
+  - **Restore Backups**: Upload `.json` files (e.g., `badminton_data.json`) and sync to Google Drive.
+  - **List/Download Files**: View and download files (e.g., logs, data) from the working directory.
+- **Chatbot**: Ask "BadmintonBuddy" questions like "Who’s the best player?" or "What’s the closest match?"
+- **Theme Settings**: Toggle light/dark themes from the sidebar.
 
 ---
 
 ## 🎨 Customization
-- **Theme**: The app uses custom CSS to adapt to light/dark themes with a badminton-inspired design (green, orange, white).
-- **AI Model**: Adjust the `llm_model` in the code to use different Google Generative AI models.
-- **Images**: Replace the shuttlecock image URL in `header_section()` with your own for a personal touch.
+- **Theme**: Custom CSS adapts to light/dark themes with a badminton-inspired design (green, orange, white).
+- **AI Model**: Adjust `st.session_state.llm_model` (e.g., "gemini-2.0-flash-lite") in `badminton_app.py` for different Google Generative AI models.
+- **Images**: Replace the shuttlecock image URL in `header_section()` with your own.
+- **Passwords**: Update `ADMIN_PASSWORD` and `SUPER_ADMIN_PASSWORD` in `.env` for security.
 
 ---
 
 ## 🤝 Contributing
-Feel free to fork this repository and submit pull requests! Ideas for improvements:
-- Add more detailed match analytics (e.g., point-by-point data).
-- Enhance the chatbot with more humorous responses.
+Fork this repository and submit pull requests! Ideas for improvements:
+- Add point-by-point match analytics.
+- Enhance LLM with predictive insights (e.g., next match winner).
 - Support multi-language interfaces.
+- Add mobile-friendly UI adjustments.
 
 ---
 
@@ -88,8 +103,7 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 
 ## 🙌 Acknowledgments
 - Built with [Streamlit](https://streamlit.io/) for an interactive UI.
-- Powered by [Google Generative AI](https://ai.google/) for the chatbot.
-- Inspired by the love for badminton and community sports!
+- Powered by [Google Generative AI](https://ai.google/) for LLM features (match parsing, skill levels, stats).
+- Inspired by the badminton community and sports analytics enthusiasts!
 
-Happy smashing! 🏸 Let me know if you need help—BadmintonBuddy’s got your back! 😄
-```
+Happy smashing! 🏸 BadmintonBuddy is here to assist—let me know your feedback! 😄
