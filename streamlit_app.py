@@ -332,7 +332,7 @@ def process_prompt_match_result(prompt):
               "score_a": 23,
               "score_b": 21,
               "winning_team": "A",
-              "notes": "A thrilling 'Nowhere to Victory' comeback! Down 11-3, Saurabh and Golu battled back for an epic 23-21 win!"
+              "notes": "Golu and Saurabh played exceptionally well, scoring 23 points against Shraddha and Pavan's 21. The match was intense, with both teams showcasing their skills. Golu's strategic plays and Saurabh's quick reflexes led to a hard-fought victory for Team A. The final score was 23-21 from 3-11 in favor of Team A. A thrilling 'Nowhere to Victory' comeback!"
             }```
             """
         
@@ -344,7 +344,7 @@ def process_prompt_match_result(prompt):
    - The prompt may describe a doubles match (two players per team) or a singles match (one player per team).
    - Example prompt for Doubles: "Pavan and Saurabh played against Shraddha and Golu. Pavan's team scored 21 points, Shraddha's team scored 18."
    - Example prompt for Singles: "Pavan played against Golu. Pavan's team scored 18 points, Golu's team scored 21."
-   - Notes are optional and may include details like court number or temporary players.
+   - Notes are optional and can include match details and emotions like "A thrilling comeback!" or "Great teamwork!".
    
 2. **Map Player Names to IDs**:
    - Use the `predefined_players` and `temp_players` (if mentioned) from the JSON data to find player IDs.
@@ -355,7 +355,7 @@ def process_prompt_match_result(prompt):
    - Assign players to `team_a` and `team_b` based on the prompt.
    - Extract scores for Team A (`score_a`) and Team B (`score_b`) as integers.
    - Determine the `winning_team` as "A" if `score_a` > `score_b`, otherwise "B".
-   - Generate detailed notes from provided info in the prompt in the `notes` field.
+   - Generate detailed notes from provided info in the prompt in the `notes` field. Include team composition, scores, and any other relevant details.
 
 4. **Validate the Data**:
    - Ensure the number of players per team matches the match type (1 for singles, 2 for doubles).
@@ -1038,7 +1038,6 @@ def match_recording_section():
                 st.session_state.prompt_error = None
             
             if st.button("Process Match Prompt", key="process_prompt", disabled=not match_prompt):
-                
                 with st.spinner("Processing prompt..."):
                     result = process_prompt_match_result(match_prompt)
                     if isinstance(result, str) and result.startswith("Error:"):
@@ -1071,14 +1070,16 @@ def match_recording_section():
                     "Value": [
                         ", ".join(team_a_names),
                         ", ".join(team_b_names),
-                        match_record["score_a"],
-                        match_record["score_b"],
+                        str(match_record["score_a"]),  # Convert to string
+                        str(match_record["score_b"]),  # Convert to string
                         f"Team {match_record['winning_team']}",
                         match_record["notes"],
                         match_record["timestamp"]
                     ]
                 }
                 df_display = pd.DataFrame(display_data)
+                # Ensure 'Value' column is of type string
+                df_display['Value'] = df_display['Value'].astype(str)
                 st.dataframe(df_display, use_container_width=True)
                 
                 # Confirm and record button
