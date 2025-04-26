@@ -1250,8 +1250,8 @@ def statistics_section():
                 match_data.append({
                     "Match ID": match["id"],
                     "Date": match["timestamp"],
-                    "Team A": " & ".join(team_a_names),
-                    "Team B": " & ".join(team_b_names),
+                    "Team A": " & ".join(team_a_names) + " 🏆" if match["winning_team"]=="A" else " & ".join(team_a_names),
+                    "Team B": " & ".join(team_b_names) + " 🏆" if match["winning_team"]=="B" else " & ".join(team_b_names),
                     "Score A": match["score_a"],
                     "Score B": match["score_b"],
                     "Score": f"{match['score_a']} - {match['score_b']}",
