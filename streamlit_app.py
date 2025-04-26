@@ -1515,7 +1515,7 @@ Give your answer in a clear, buddy-like way, using headings or bullet points if 
         model = ChatGoogleGenerativeAI(
             model=st.session_state.llm_model,
             google_api_key=st.session_state.api_key,
-            temperature=0.2
+            temperature=0.3
         )
         
         prompt = prompt_template.format(
@@ -1728,7 +1728,7 @@ def generate_llm_stats(match_history, players):
         model = ChatGoogleGenerativeAI(
             model=st.session_state.llm_model,
             google_api_key=st.session_state.api_key,
-            temperature=0
+            temperature=0.05
         )
         message = HumanMessage(content=prompt)
         response = model.invoke([message])
