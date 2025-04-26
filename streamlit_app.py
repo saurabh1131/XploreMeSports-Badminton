@@ -637,6 +637,24 @@ def header_section():
     st.title("✨XploreMeAtSports: Badminton🏸")
     st.markdown("Manage your badminton matches, teams, and stats!")
 
+    # Calculate banner statistics
+    try:
+        matches_played = len(st.session_state.match_history)
+        total_score = sum(match["score_a"] + match["score_b"] for match in st.session_state.match_history)
+        logger.info(f"Calculated banner stats: Matches Played = {matches_played}, Total Score = {total_score}")
+        
+        # Display banner
+        if matches_played > 0:
+            st.info(
+                f"🏸 **Season Stats** 🏸 Matches Played: **{matches_played}** | Total Points Scored: **{total_score}**",
+                icon="📊"
+            )
+        else:
+            st.info("🏸 **Season Stats** 🏸 No matches played yet. Start recording to see stats!", icon="📊")
+    except Exception as e:
+        logger.error(f"Error calculating banner stats: {str(e)}")
+        st.error("Failed to load season stats. Please try again.")
+
 def footer_section():
     """App Footer section with visitor counter"""
     visitor_file = 'visitor_count.json'
