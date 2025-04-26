@@ -637,16 +637,31 @@ def header_section():
     st.title("✨XploreMeAtSports: Badminton🏸")
     st.markdown("Manage your badminton matches, teams, and stats!")
 
-    # Calculate banner statistics
     try:
         matches_played = len(st.session_state.match_history)
         total_score = sum(match["score_a"] + match["score_b"] for match in st.session_state.match_history)
-        logger.info(f"Calculated banner stats: Matches Played = {matches_played}, Total Score = {total_score}")
+        
+        # Generate LLM stats
+        all_players = st.session_state.predefined_players + st.session_state.temp_players
+        llm_stats = generate_llm_stats(st.session_state.match_history, all_players)
+        
+        # Calculate average skill level
+        skill_levels = llm_stats["skills"].values()
+        avg_skill = round(sum(skill_levels) / len(skill_levels), 1) if skill_levels else 0
+        
+        # Select one interesting stat (random or first)
+        interesting_stat = " | ".join(llm_stats["interesting_stats"]) if llm_stats["interesting_stats"] else "No standout stats yet"
+        
+        logger.info(f"Banner stats: Matches Played = {matches_played}, Total Score = {total_score}, Avg Skill = {avg_skill}, Interesting Stat = {interesting_stat}")
         
         # Display banner
         if matches_played > 0:
             st.info(
-                f"🏸 **Season Stats** 🏸 Matches Played: **{matches_played}** | Total Points Scored: **{total_score}**",
+                f"🏸 **Season Stats** ➡ Matches: **{matches_played}** | Points: **{total_score}**",
+                icon="📊"
+            )
+            st.info(
+                f"🏸 **AI Stats** ➡ Avg Skill: **{avg_skill}** | {interesting_stat}",
                 icon="📊"
             )
         else:
@@ -1618,6 +1633,104 @@ def push_to_gdrive(chat_history=False, match_history=False, visitor_count=False)
             upload_to_drive(chat_history=chat_history, match_history=match_history)
     except Exception as e:
         logger.error(f"Failed to upload to GDrive: {str(e)}")
+
+def generate_llm_stats(match_history, players):
+    """Generate player skill levels and interesting stats using LLM"""
+    try:
+        # Check cache
+        if 'llm_stats_cache' in st.session_state and st.session_state.llm_stats_cache.get('match_count') == len(match_history):
+            logger.info("Using cached LLM stats")
+            return st.session_state.llm_stats_cache['stats']
+
+        # Prepare player stats summary
+        player_stats = []
+        for player in players:
+            win_rate = (player["wins"] / player["games_played"] * 100) if player["games_played"] > 0 else 0
+            avg_points = player["points_scored"] / player["games_played"] if player["games_played"] > 0 else 0
+            player_stats.append({
+                "name": player["name"],
+                "games_played": player["games_played"],
+                "wins": player["wins"],
+                "points_scored": player["points_scored"],
+                "win_rate": round(win_rate, 1),
+                "avg_points_per_game": round(avg_points, 1)
+            })
+
+        # Prepare match history summary (limit to recent matches to avoid token limits)
+        match_summary = [
+            {
+                "match_id": match["id"],
+                "team_a": [get_player_by_id(pid)["name"] for pid in match["team_a"] if get_player_by_id(pid)],
+                "team_b": [get_player_by_id(pid)["name"] for pid in match["team_b"] if get_player_by_id(pid)],
+                "score_a": match["score_a"],
+                "score_b": match["score_b"],
+                "winning_team": match["winning_team"],
+                "notes": match["notes"]
+            } for match in match_history[-50:]  # Limit to last 50 matches
+        ]
+
+        # Construct LLM prompt
+        prompt = f"""You are BadmintonBuddy, an expert in analyzing badminton match data. Your task is to:
+1. Assign a skill level (1-5, where 1 is beginner and 5 is expert) to each player based on their performance stats (games played, wins, win rate, points scored, avg points per game).
+2. Generate 1-2 interesting, concise stats or facts about the season (e.g., top performer, closest match, biggest comeback).
+
+**Input Data**:
+- **Player Stats**: {json.dumps(player_stats, indent=2)}
+- **Match History (Recent)**: {json.dumps(match_summary, indent=2)}
+
+**Instructions**:
+- For skill levels, consider win rate, avg points per game, and games played. Players with higher win rates and points should get higher skills (e.g., win rate > 70% → 4 or 5, < 30% → 1 or 2).
+- For interesting stats, focus on engaging facts (e.g., player with most wins, match with smallest score difference, match with largest comeback based on notes).
+- Return a JSON object with:
+  - `skills`: Dictionary mapping player names to skill levels (1-5).
+  - `interesting_stats`: List of 1-2 strings, each a concise stat (max 50 characters).
+- Output *only* valid JSON, no markdown or extra text.
+- If data is insufficient, return empty skills and stats.
+
+**Output Format**:
+{{
+  "skills": {{"player_name": <int>, ...}},
+  "interesting_stats": ["stat1", "stat2"]
+}}
+"""
+        logger.info(f"Calling LLM for stats generation with {len(match_summary)} matches and {len(player_stats)} players")
+
+        # Call LLM
+        model = ChatGoogleGenerativeAI(
+            model=st.session_state.llm_model,
+            google_api_key=st.session_state.api_key,
+            temperature=0.5
+        )
+        message = HumanMessage(content=prompt)
+        response = model.invoke([message])
+        
+        # Parse response
+        response_content = response.content.strip()
+        logger.info(f"LLM raw response: {response_content}")
+        
+        if response_content.startswith("```json"):
+            response_content = response_content.split("```json")[1].split("```")[0].strip()
+        
+        try:
+            llm_output = json.loads(response_content)
+            if not isinstance(llm_output, dict) or "skills" not in llm_output or "interesting_stats" not in llm_output:
+                raise ValueError("Invalid LLM output format")
+            
+            # Cache result
+            st.session_state.llm_stats_cache = {
+                'match_count': len(match_history),
+                'stats': llm_output
+            }
+            return llm_output
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON parsing error for LLM stats: {str(e)}, response: {response_content}")
+            return {"skills": {}, "interesting_stats": []}
+        except ValueError as e:
+            logger.error(f"Invalid LLM output: {str(e)}")
+            return {"skills": {}, "interesting_stats": []}
+    except Exception as e:
+        logger.error(f"Error generating LLM stats: {str(e)}")
+        return {"skills": {}, "interesting_stats": []}
 
 def main():
     """Main app"""
