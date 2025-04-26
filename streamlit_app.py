@@ -880,7 +880,7 @@ def match_recording_section():
             - Optional notes (e.g., court number, temporary players)
             
             **Example Prompt**: 
-            "Pavan and Lala played against Saurabh and Golu. Pavan's team scored 21 points, Saurabh's team scored 18. Match was on court 1 with 2 temporary players."
+            "Pavan and Saurabh played against Golu and Shraddha. Pavan's team scored 21 points, Golu's team scored 19. It was a great match, we had a lot of fun."
             """)
             match_prompt = st.text_area("Match Prompt", key="match_prompt")
             
