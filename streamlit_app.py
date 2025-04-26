@@ -1644,7 +1644,7 @@ def upload_to_drive(chat_history=False, match_history=False, files=None):
             extension = file_name.rsplit('.', 1)[1]  # Get extension
             new_file_name = f"{base_name}_{timestamp}.{extension}"
             
-            query = f"name = '{file_name}' and trashed = false"
+            query = f"name = '{new_file_name}' and trashed = false"
             
             response = drive_service.files().list(
                 q=query,
@@ -1662,26 +1662,30 @@ def upload_to_drive(chat_history=False, match_history=False, files=None):
                 resumable=True
             )
             
+            # logger.info(f"Checking for existing file: {response.get('files')}")
             if response.get('files'):
-                file_id = response['files'][0]['id']
-                current_parents = response['files'][0].get('parents', [])
-                
-                if target_folder_id not in current_parents:
-                    logger.info(f"Moving {file_name} to target folder")
-                    file = drive_service.files().update(
-                        fileId=file_id,
-                        addParents=target_folder_id,
-                        removeParents=','.join(current_parents),
-                        media_body=media,
-                        fields='id, parents'
-                    ).execute()
-                else:
-                    logger.info(f"Updating existing file: {file_name}")
-                    file = drive_service.files().update(
-                        fileId=file_id,
-                        media_body=media,
-                        fields='id'
-                    ).execute()
+                file_name = response['files'][0]['name']
+                if file_name == new_file_name:
+                    logger.info(f"File already exists, so updating it: {new_file_name}")
+                    file_id = response['files'][0]['id']
+                    current_parents = response['files'][0].get('parents', [])
+                    
+                    if target_folder_id not in current_parents:
+                        logger.info(f"Moving {new_file_name} to target folder")
+                        file = drive_service.files().update(
+                            fileId=file_id,
+                            addParents=target_folder_id,
+                            removeParents=','.join(current_parents),
+                            media_body=media,
+                            fields='id, parents'
+                        ).execute()
+                    else:
+                        logger.info(f"Updating existing file: {new_file_name}")
+                        file = drive_service.files().update(
+                            fileId=file_id,
+                            media_body=media,
+                            fields='id'
+                        ).execute()
             else:
                 logger.info(f"Uploading new file: {new_file_name}")
                 file = drive_service.files().create(
