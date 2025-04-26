@@ -945,6 +945,112 @@ def match_recording_section():
                         st.session_state.prompt_error = None
                         st.rerun()
 
+def delete_selected_matches(selected_rows):
+    """Delete selected matches from match history and update player stats"""
+    try:
+        if not selected_rows:
+            return "Error: No matches selected for deletion."
+
+        selected_match_ids = [row["Match ID"] for row in selected_rows]
+        # Validate match IDs
+        for match_id in selected_match_ids:
+            if not any(m["id"] == match_id for m in st.session_state.match_history):
+                return f"Error: Match ID {match_id} not found in match history."
+
+        # Filter out deleted matches
+        new_match_history = [m for m in st.session_state.match_history if m["id"] not in selected_match_ids]
+
+        # Update player stats by resetting and recalculating
+        all_players = get_all_available_players()
+        for player in all_players:
+            player["games_played"] = 0
+            player["wins"] = 0
+            player["points_scored"] = 0
+
+        for match in new_match_history:
+            for pid in match["team_a"]:
+                update_player_stats(pid, match["score_a"], match["winning_team"] == "A")
+            for pid in match["team_b"]:
+                update_player_stats(pid, match["score_b"], match["winning_team"] == "B")
+
+        # Update session state
+        st.session_state.match_history = new_match_history
+
+        # Save to file and upload to Google Drive
+        save_data()
+        push_to_gdrive(match_history=True)
+
+        return f"Success: Deleted {len(selected_match_ids)} match(es) successfully!"
+    except Exception as e:
+        logger.error(f"Error deleting matches: {str(e)}")
+        return f"Error: Failed to delete matches: {str(e)}"
+
+def save_edited_match_history(edited_data, deleted_match_ids):
+    """Save edited match history to session state and update player stats, excluding deleted matches"""
+    try:
+        # Filter out deleted matches
+        edited_data = [row for row in edited_data if row["Match ID"] not in deleted_match_ids]
+
+        # Validate and process edited data
+        new_match_history = []
+        for row in edited_data:
+            match_id = row["Match ID"]
+            # Find original match
+            original_match = next((m for m in st.session_state.match_history if m["id"] == match_id), None)
+            if not original_match:
+                return f"Error: Match ID {match_id} not found in match history."
+
+            # Validate editable fields
+            score_a = row["Score A"]
+            score_b = row["Score B"]
+            winning_team = row["Winner"]
+            notes = row["Notes"]
+
+            if not (isinstance(score_a, int) and isinstance(score_b, int) and score_a >= 0 and score_b >= 0):
+                return f"Error: Scores for match {match_id} must be non-negative integers."
+            
+            if winning_team not in ["A", "B"]:
+                return f"Error: Winning team for match {match_id} must be 'A' or 'B'."
+            
+            expected_winner = "A" if score_a > score_b else "B" if score_b > score_a else None
+            if expected_winner and winning_team != expected_winner:
+                return f"Error: Winning team for match {match_id} does not match scores (Score A: {score_a}, Score B: {score_b})."
+
+            # Create updated match record
+            updated_match = original_match.copy()
+            updated_match.update({
+                "score_a": score_a,
+                "score_b": score_b,
+                "winning_team": winning_team,
+                "notes": notes
+            })
+            new_match_history.append(updated_match)
+
+        # Update player stats by resetting and recalculating
+        all_players = get_all_available_players()
+        for player in all_players:
+            player["games_played"] = 0
+            player["wins"] = 0
+            player["points_scored"] = 0
+
+        for match in new_match_history:
+            for pid in match["team_a"]:
+                update_player_stats(pid, match["score_a"], match["winning_team"] == "A")
+            for pid in match["team_b"]:
+                update_player_stats(pid, match["score_b"], match["winning_team"] == "B")
+
+        # Update session state
+        st.session_state.match_history = new_match_history
+
+        # Save to file and upload to Google Drive
+        save_data()
+        push_to_gdrive(match_history=True)
+
+        return "Success: Match history updated successfully!"
+    except Exception as e:
+        logger.error(f"Error saving edited match history: {str(e)}")
+        return f"Error: Failed to save changes: {str(e)}"
+
 def statistics_section():
     """Statistics and analytics section"""
     st.header("📊 Statistics & Analytics")
@@ -990,16 +1096,78 @@ def statistics_section():
                 team_a_names = [get_player_by_id(pid)["name"] for pid in match["team_a"] if get_player_by_id(pid)]
                 team_b_names = [get_player_by_id(pid)["name"] for pid in match["team_b"] if get_player_by_id(pid)]
                 match_data.append({
-                    "Match ID": match["id"][:8],
+                    "Match ID": match["id"],
                     "Date": match["timestamp"],
                     "Team A": " & ".join(team_a_names),
                     "Team B": " & ".join(team_b_names),
+                    "Score A": match["score_a"],
+                    "Score B": match["score_b"],
                     "Score": f"{match['score_a']} - {match['score_b']}",
-                    "Winner": f"Team {match['winning_team']}",
+                    "Winner": match["winning_team"],
                     "Notes": match["notes"]
                 })
             df_matches = pd.DataFrame(match_data)
-            st.dataframe(df_matches, use_container_width=True)
+
+            # Regular users see read-only table
+            st.dataframe(df_matches[["Match ID", "Date", "Team A", "Team B", "Score", "Winner", "Notes"]], use_container_width=True)
+
+            # Super Admin editable table with deletion
+            if st.session_state.is_super_admin:
+                with st.expander("Edit Match History (Super Admin Only)"):
+                    st.info("Edit match details or select matches to delete below. Only Score A, Score B, Winner, and Notes can be modified.")
+                    # Prepare editable data with Delete column
+                    editable_data = df_matches[["Match ID", "Date", "Team A", "Team B", "Score A", "Score B", "Winner", "Notes"]].copy()
+                    editable_data["Delete"] = False  # Add checkbox column
+                    # Configure column settings for st.data_editor
+                    column_config = {
+                        "Match ID": st.column_config.TextColumn(disabled=True),
+                        "Date": st.column_config.TextColumn(disabled=True),
+                        "Team A": st.column_config.TextColumn(disabled=True),
+                        "Team B": st.column_config.TextColumn(disabled=True),
+                        "Score A": st.column_config.NumberColumn(min_value=0, format="%d", step=1),
+                        "Score B": st.column_config.NumberColumn(min_value=0, format="%d", step=1),
+                        "Winner": st.column_config.SelectboxColumn(options=["A", "B"]),
+                        "Notes": st.column_config.TextColumn(),
+                        "Delete": st.column_config.CheckboxColumn(label="Delete", help="Select to delete this match")
+                    }
+                    edited_df = st.data_editor(
+                        editable_data,
+                        column_config=column_config,
+                        num_rows="fixed",
+                        key="match_history_editor",
+                        use_container_width=True
+                    )
+
+                    # Handle deletion
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("Delete Selected Matches", key="delete_matches", disabled=not st.session_state.is_super_admin):
+                            selected_rows = edited_df[edited_df["Delete"] == True].to_dict('records')
+                            if selected_rows:
+                                # Confirmation prompt
+                                st.warning(f"Are you sure you want to delete {len(selected_rows)} match(es)? This action cannot be undone.")
+                                if st.button("Confirm Deletion", key="confirm_delete"):
+                                    result = delete_selected_matches(selected_rows)
+                                    if result.startswith("Error:"):
+                                        st.error(result)
+                                    else:
+                                        st.success(result)
+                                        st.rerun()
+                            else:
+                                st.error("No matches selected for deletion.")
+
+                    # Handle saving edits
+                    with col2:
+                        if st.button("Save Changes", key="save_match_history", disabled=not st.session_state.is_super_admin):
+                            deleted_match_ids = edited_df[edited_df["Delete"] == True]["Match ID"].tolist()
+                            result = save_edited_match_history(edited_df.to_dict('records'), deleted_match_ids)
+                            if result.startswith("Error:"):
+                                st.error(result)
+                            else:
+                                st.success(result)
+                                st.rerun()
+
+            # Score distribution plot
             st.subheader("Match Score Distribution")
             scores_data = []
             for match in st.session_state.match_history:
@@ -1064,7 +1232,6 @@ def statistics_section():
                         player_performance[player["name"]]["dates"].append(timestamp)
                         player_performance[player["name"]]["cumulative_wins"].append(player["wins"])
                         player_performance[player["name"]]["cumulative_points"].append(player["points_scored"])
-
             for player_name, data in player_performance.items():
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=data["dates"], y=data["cumulative_wins"], mode='lines+markers', name='Cumulative Wins'))
@@ -1081,12 +1248,10 @@ def statistics_section():
             df_players["win_rate"] = df_players.apply(
                 lambda x: round((x["wins"] / x["games_played"]) * 100, 1) if x["games_played"] > 0 else 0, axis=1
             )
-
             st.subheader("Skill Level vs. Performance")
             fig = px.box(df_players, x="skill_level", y="win_rate", title="Win Rate Distribution by Skill Level",
                           labels={"win_rate": "Win Rate (%)", "skill_level": "Skill Level"})
             st.plotly_chart(fig, use_container_width=True)
-
             st.subheader("Player Consistency")
             df_players["points_std_dev"] = df_players.apply(
                 lambda x: np.std(x["points_scored"]) if x["games_played"] > 1 else 0, axis=1
@@ -1095,7 +1260,6 @@ def statistics_section():
                          labels={"points_std_dev": "Standard Deviation of Points Scored", "name": "Player Name"})
             fig.update_layout(xaxis_tickangle=-45)
             st.plotly_chart(fig, use_container_width=True)
-
             st.subheader("Head-to-Head Matchups")
             head_to_head = defaultdict(lambda: {"wins": 0, "losses": 0})
             for match in st.session_state.match_history:
@@ -1109,7 +1273,6 @@ def statistics_section():
                                 head_to_head[key]["wins"] += 1
                             else:
                                 head_to_head[key]["losses"] += 1
-
             head_to_head_data = []
             for players, stats in head_to_head.items():
                 win_rate = round((stats["wins"] / (stats["wins"] + stats["losses"])) * 100, 1) if (stats["wins"] + stats["losses"]) > 0 else 0
@@ -1117,13 +1280,11 @@ def statistics_section():
                     "Players": f"{players[0]} vs {players[1]}",
                     "Win Rate (%)": win_rate
                 })
-
             df_head_to_head = pd.DataFrame(head_to_head_data)
             fig = px.bar(df_head_to_head, x="Players", y="Win Rate (%)", title="Head-to-Head Win Rates",
                          labels={"Win Rate (%)": "Win Rate (%)", "Players": "Players Matchup"})
             fig.update_layout(xaxis_tickangle=-45)
             st.plotly_chart(fig, use_container_width=True)
-
         else:
             st.info("No advanced analytics data available yet.")
 
