@@ -649,23 +649,51 @@ def header_section():
         skill_levels = llm_stats["skills"].values()
         avg_skill = round(sum(skill_levels) / len(skill_levels), 1) if skill_levels else 0
         
-        # Select one interesting stat (random or first)
-        interesting_stat = " | ".join(llm_stats["interesting_stats"]) if llm_stats["interesting_stats"] else "No standout stats yet"
+        # Prepare player skills and interesting stats
+        player_skills = "; ".join([f"{name}: {skill}" for name, skill in llm_stats["skills"].items()])
+        interesting_stats = llm_stats["interesting_stats"]
+        interesting_stat = " | ".join(interesting_stats) if interesting_stats else "No standout stats yet"
         
-        logger.info(f"Banner stats: Matches Played = {matches_played}, Total Score = {total_score}, Avg Skill = {avg_skill}, Interesting Stat = {interesting_stat}")
+        logger.info(f"Banner stats: Matches Played = {matches_played}, Total Score = {total_score}, "
+                    f"Avg Skill = {avg_skill}, Player Skills = {player_skills}, Interesting Stat = {interesting_stat}")
         
-        # Display banner
-        if matches_played > 0:
-            st.info(
-                f"🏸 **Season Stats** ➡ Matches: **{matches_played}** | Points: **{total_score}**",
-                icon="📊"
+        # Display AI Stats expander
+        with st.expander("📊🤖 Season AI Stats", expanded=True):
+            st.markdown(
+                """
+                <div style="padding: 10px; background-color: #4169E1; color: white; border-radius: 5px; margin-bottom: 10px;">
+                    <div style="margin-left: 20px;">
+                        🏸 Matches: <b>{}</b> | Points: <b>{}</b>
+                    </div>
+                </div>
+                """.format(matches_played, total_score),
+                unsafe_allow_html=True
             )
-            st.info(
-                f"🏸 **AI Stats** ➡ Avg Skill: **{avg_skill}** | {interesting_stat}",
-                icon="📊"
-            )
-        else:
-            st.info("🏸 **Season Stats** 🏸 No matches played yet. Start recording to see stats!", icon="📊")
+            if matches_played > 0:
+                st.markdown(
+                    """
+                    <div style="padding: 10px; background-color: #4169E1; color: white; border-radius: 5px; margin-bottom: 10px;">
+                        <div style="margin-left: 20px;">
+                            <b>⭐ Skill Level</b> ➩ Avg: <b>{}</b> | <b>{}</b> 
+                        </div>
+                        <div style="margin-left: 20px;">
+                            <b>🗝️ Key Insights</b> ➩ {}
+                        </div>
+                     </div>
+                    """.format(avg_skill, player_skills, interesting_stat),
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown(
+                    """
+                    <div style="padding: 10px; background-color: #1e3a8a; color: white; border-radius: 5px; margin-bottom: 10px;">
+                        <div style="margin-left: 20px;">
+                            No AI stats available yet. Record matches to see insights!
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
     except Exception as e:
         logger.error(f"Error calculating banner stats: {str(e)}")
         st.error("Failed to load season stats. Please try again.")
@@ -1656,7 +1684,7 @@ def generate_llm_stats(match_history, players):
                 "avg_points_per_game": round(avg_points, 1)
             })
 
-        # Prepare match history summary (limit to recent matches to avoid token limits)
+        # Prepare match history summary (limit to last 50 matches)
         match_summary = [
             {
                 "match_id": match["id"],
@@ -1665,32 +1693,33 @@ def generate_llm_stats(match_history, players):
                 "score_a": match["score_a"],
                 "score_b": match["score_b"],
                 "winning_team": match["winning_team"],
-                "notes": match["notes"]
-            } for match in match_history[-50:]  # Limit to last 50 matches
+                "notes": match["notes"],
+                "timestamp": match["timestamp"]
+            } for match in match_history[-50:]
         ]
 
-        # Construct LLM prompt
-        prompt = f"""You are BadmintonBuddy, an expert in analyzing badminton match data. Your task is to:
-1. Assign a skill level (1-5, where 1 is beginner and 5 is expert) to each player based on their performance stats (games played, wins, win rate, points scored, avg points per game).
-2. Generate 1-2 interesting, concise stats or facts about the season (e.g., top performer, closest match, biggest comeback).
+        # Construct LLM prompt with enhanced instructions
+        prompt = f"""You are BadmintonBuddy, an expert in analyzing badminton data. Your task is to:
+1. Assign a skill level (1-5, where 1 is beginner and 5 is expert) to each player based on their stats (games played, wins, win rate, avg points per game). Use: >80% win rate → 5, 60-80% → 4, 40-60% → 3, 20-40% → 2, <20% → 1.
+2. Generate 2-3 diverse, engaging, and concise interesting stats/facts about the season (e.g., top performer, best team combo, closest match, biggest comeback, most consistent player, dramatic moment) with specific details (e.g., scores, dates, players). Keep each under 60 characters.
 
 **Input Data**:
 - **Player Stats**: {json.dumps(player_stats, indent=2)}
 - **Match History (Recent)**: {json.dumps(match_summary, indent=2)}
 
 **Instructions**:
-- For skill levels, consider win rate, avg points per game, and games played. Players with higher win rates and points should get higher skills (e.g., win rate > 70% → 4 or 5, < 30% → 1 or 2).
-- For interesting stats, focus on engaging facts (e.g., player with most wins, match with smallest score difference, match with largest comeback based on notes).
+- For skills, prioritize win rate and avg points, adjusting for games played.
+- For interesting stats, include variety (e.g., individual, team, match-specific) and use notes/timestamps for context.
 - Return a JSON object with:
   - `skills`: Dictionary mapping player names to skill levels (1-5).
-  - `interesting_stats`: List of 1-2 strings, each a concise stat (max 50 characters).
+  - `interesting_stats`: List of 2-3 strings, each a concise stat.
 - Output *only* valid JSON, no markdown or extra text.
 - If data is insufficient, return empty skills and stats.
 
 **Output Format**:
 {{
   "skills": {{"player_name": <int>, ...}},
-  "interesting_stats": ["stat1", "stat2"]
+  "interesting_stats": ["stat1", "stat2", "stat3"]
 }}
 """
         logger.info(f"Calling LLM for stats generation with {len(match_summary)} matches and {len(player_stats)} players")
