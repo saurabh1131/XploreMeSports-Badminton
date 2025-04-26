@@ -1687,14 +1687,13 @@ def generate_llm_stats(match_history, players):
         # Prepare match history summary (limit to last 50 matches)
         match_summary = [
             {
-                "match_id": match["id"],
+                "timestamp": match["timestamp"],
                 "team_a": [get_player_by_id(pid)["name"] for pid in match["team_a"] if get_player_by_id(pid)],
-                "team_b": [get_player_by_id(pid)["name"] for pid in match["team_b"] if get_player_by_id(pid)],
                 "score_a": match["score_a"],
+                "team_b": [get_player_by_id(pid)["name"] for pid in match["team_b"] if get_player_by_id(pid)],
                 "score_b": match["score_b"],
                 "winning_team": match["winning_team"],
                 "notes": match["notes"],
-                "timestamp": match["timestamp"]
             } for match in match_history[-50:]
         ]
 
