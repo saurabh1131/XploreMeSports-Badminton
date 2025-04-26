@@ -536,7 +536,7 @@ def admin_authentication():
                 else:
                     st.error("Incorrect password")
 
-        st.header("Super Admin Panel")
+        st.header("Super Admin Login")
         if st.session_state.is_super_admin:
             if check_super_admin_session_timeout():
                 st.warning("Super Admin session has timed out. Please login again.")
