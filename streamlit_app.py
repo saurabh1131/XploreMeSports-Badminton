@@ -155,6 +155,16 @@ def get_player_by_id(player_id):
             return player
     return None
 
+def get_player_id_by_name(name):
+    """Get player ID by name"""
+    for player in st.session_state.predefined_players:
+        if player["name"].lower() == name.lower():
+            return player["id"]
+    for player in st.session_state.temp_players:
+        if player["name"].lower() == name.lower():
+            return player["id"]
+    return None
+
 def update_player_stats(player_id, points, is_winner):
     """Update a player's statistics by ID"""
     for i, player in enumerate(st.session_state.predefined_players):
@@ -181,7 +191,6 @@ def get_all_available_players():
 
 def generate_random_teams(players, previous_teams=None):
     """Generate random teams with consideration for player sitting out history"""
-    # Log the match type for debugging
     logger.info(f"Generating teams for match type: {st.session_state.match_type}")
     
     min_players_required = 4 if st.session_state.match_type.lower() == "doubles" else 2
@@ -191,7 +200,7 @@ def generate_random_teams(players, previous_teams=None):
     
     waiting_priority = []
     for player in players:
-        sat_out_count = np.random.randint(1, 100) #st.session_state.player_rotation_history.get(player["id"], {}).get("sat_out_count", 0)
+        sat_out_count = np.random.randint(1, 100)
         waiting_priority.append((player, sat_out_count))
     
     waiting_priority.sort(key=lambda x: x[1], reverse=True)
@@ -203,7 +212,6 @@ def generate_random_teams(players, previous_teams=None):
     selected_players = [p[0] for p in waiting_priority[:total_players_needed]]
     waiting_players = [p[0] for p in waiting_priority[total_players_needed:]]
     
-    # Validate the number of selected players
     if len(selected_players) < total_players_needed:
         logger.warning(f"Could not select enough players: {len(selected_players)} selected, needed {total_players_needed}")
         return None, None
@@ -215,7 +223,6 @@ def generate_random_teams(players, previous_teams=None):
     logger.info(f"Team A: {[p['name'] for p in team_a]}")
     logger.info(f"Team B: {[p['name'] for p in team_b]}")
     
-    # Validate team sizes
     if len(team_a) != players_per_team or len(team_b) != players_per_team:
         logger.error(f"Team size mismatch: Team A has {len(team_a)}, Team B has {len(team_b)}, expected {players_per_team} per team")
         return None, None
@@ -235,7 +242,7 @@ def generate_random_teams(players, previous_teams=None):
     return team_a, team_b
 
 def record_match_result(team_a, team_b, score_a, score_b, notes=""):
-    """Record match results, update player statistics, and push to Git"""
+    """Record match results, update player statistics, and push to Google Drive"""
     match_id = str(uuid.uuid4())
     ist = pytz.timezone('Asia/Kolkata')
     timestamp = datetime.datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S")
@@ -261,6 +268,167 @@ def record_match_result(team_a, team_b, score_a, score_b, notes=""):
     save_data()
     push_to_gdrive(match_history=True)
     return match_record
+
+def process_prompt_match_result(prompt):
+    """Process user prompt with LLM to generate a match record JSON"""
+    try:
+        with open('badminton_data.json', 'r', encoding='utf-8') as file:
+            badminton_data = json.load(file)
+
+        expected_json_format = \
+            """```json
+            {
+              "team_a": ["<player_id1>", "<player_id2>"],
+              "team_b": ["<player_id3>", "<player_id4>"],
+              "score_a": <integer>,
+              "score_b": <integer>,
+              "winning_team": "A" or "B",
+              "notes": "NOTE: <gen-ai generated detailed notes>. PROPMT: <user prompt>"
+            }```
+            """
+
+        example_json_output = \
+            """```json
+            {
+              "team_a": ["<Golu's Player ID>", "<Saurabh's Player ID>"],
+              "team_b": ["<Shraddha's Player ID>", "<Pavan's Player ID>"],
+              "score_a": 23,
+              "score_b": 21,
+              "winning_team": "A",
+              "notes": "NOTE: A thrilling 'Nowhere to Victory' comeback! Down 11-3, Saurabh and Golu battled back for an epic 23-21 win!. PROPMT: Record a match: Golu and Saurabh Played against Pavan and Shraddha. Saurabh's team won with 23-21. Another \"Nowhere to Victory\" type match. The score was 11-3 at one point, but it eventually came to a 21-23 victory!"
+            }```
+            """
+        
+        prompt_text = f"""You are BadmintonBuddy, tasked with converting a user prompt describing a badminton match into a JSON match record. The prompt contains information about player names, teams, scores, and optional notes. Your job is to map player names to their IDs from the provided JSON data, determine the winning team, and create a match record in the specified format.
+
+**Instructions**:
+1. **Parse the Prompt**:
+   - Extract player names, team compositions (Team A and Team B), scores for each team, and any notes.
+   - The prompt may describe a doubles match (two players per team) or a singles match (one player per team).
+   - Example prompt: "Pavan and Lala played against Saurabh and Golu. Pavan's team scored 21 points, Saurabh's team scored 18. Match was on court 1 with 2 temporary players."
+   - Notes are optional and may include details like court number or temporary players.
+
+2. **Map Player Names to IDs**:
+   - Use the `predefined_players` and `temp_players` (if available) from the JSON data to find player IDs.
+   - Match player names case-insensitively.
+   - If temporary players are mentioned, generate a random player ID for them.  If the temporary player is not mentioned and the name is not found, return an error message like "Error: Player <name> not found in the player list, advice to add the player."
+
+3. **Determine Match Details**:
+   - Assign players to `team_a` and `team_b` based on the prompt.
+   - Extract scores for Team A (`score_a`) and Team B (`score_b`) as integers.
+   - Determine the `winning_team` as "A" if `score_a` > `score_b`, otherwise "B".
+   - Do not include `id` or `timestamp` in the output; these will be added later.
+   - Generate notes from provided info in the prompt in the `notes` field.
+
+4. **Validate the Data**:
+   - Ensure the number of players per team matches the match type (1 for singles, 2 for doubles).
+   - Ensure scores are non-negative integers.
+   - Ensure all player IDs exist in the JSON data.
+   - If the prompt is ambiguous or missing details (e.g., scores or teams), return an error message like "Error: Prompt missing required details (e.g., scores or team composition)."
+
+5. **Inputs**:
+
+**User Prompt**:
+{prompt}
+
+**Matches History JSON Data**:
+{json.dumps(badminton_data, indent=2)}
+
+6. **Output Format**:
+   - Return *only* a valid JSON object matching the format below, with no additional text, markdown, code blocks, or comments.
+   - If any errors occur (e.g., unknown player, invalid scores, incorrect team sizes), return a string starting with "Error: " describing the issue.
+
+**Expected JSON Format**:
+{expected_json_format}
+
+**Example JSON Output**:
+{example_json_output}
+
+**Response**:
+- If successful, return the JSON match record as a dictionary (without `id` or `timestamp`).
+- If an error occurs, return a string starting with "Error: " describing the issue.
+"""
+        
+        model = ChatGoogleGenerativeAI(
+            model=st.session_state.llm_model,
+            google_api_key=st.session_state.api_key,
+            temperature=0.5
+        )
+        
+        ist = pytz.timezone('Asia/Kolkata')
+        timestamp = datetime.datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S")
+        
+        message = HumanMessage(content=prompt_text)
+        response = model.invoke([message])
+        
+        # Log the raw response for debugging
+        logger.info(f"LLM raw response: {response.content}")
+        
+        # Parse the response
+        response_content = response.content.strip()
+        if response_content.startswith("Error:"):
+            return response_content
+        try:
+            response_content = response_content.replace("```", '').replace("json", '').strip()
+
+            logger.info(f"LLM raw response 2: {response_content}")
+
+
+            match_record = json.loads(response_content)
+            # Add UUID and timestamp
+            match_record["id"] = str(uuid.uuid4())
+            match_record["timestamp"] = timestamp
+            return match_record
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON parsing error: {str(e)}, response: {response_content}")
+            return f"Error: Invalid JSON response from LLM: {response_content}"
+    except Exception as e:
+        logger.error(f"Prompt processing error: {str(e)}")
+        return f"Error: Failed to process prompt: {str(e)}"
+def record_prompt_match_result(match_record):
+    """Append match record from prompt to match history and update stats"""
+    try:
+        # Validate match record
+        required_fields = ["id", "timestamp", "team_a", "team_b", "score_a", "score_b", "winning_team", "notes"]
+        if not all(field in match_record for field in required_fields):
+            return f"Error: Missing required fields in match record: {list(set(required_fields) - set(match_record.keys()))}"
+        
+        # Validate player IDs
+        all_players = get_all_available_players()
+        player_ids = {p["id"] for p in all_players}
+        for pid in match_record["team_a"] + match_record["team_b"]:
+            if pid not in player_ids:
+                return f"Error: Invalid player ID: {pid}"
+        
+        # Validate scores
+        if not (isinstance(match_record["score_a"], int) and isinstance(match_record["score_b"], int)):
+            return f"Error: Scores must be integers"
+        if match_record["score_a"] < 0 or match_record["score_b"] < 0:
+            return f"Error: Scores cannot be negative"
+        
+        # Validate team sizes based on match type
+        expected_players = 1 if st.session_state.match_type == "singles" else 2
+        if len(match_record["team_a"]) != expected_players or len(match_record["team_b"]) != expected_players:
+            return f"Error: Incorrect number of players per team. Expected {expected_players} per team."
+        
+        # Update player stats
+        for pid in match_record["team_a"]:
+            update_player_stats(pid, match_record["score_a"], match_record["winning_team"] == "A")
+        for pid in match_record["team_b"]:
+            update_player_stats(pid, match_record["score_b"], match_record["winning_team"] == "B")
+        
+        # Append to match history
+        st.session_state.match_history.append(match_record)
+        
+        # Save to file
+        save_data()
+        
+        # Upload to Google Drive
+        push_to_gdrive(match_history=True)
+        
+        return "Success: Match recorded successfully"
+    except Exception as e:
+        return f"Error: Failed to record match: {str(e)}"
 
 def verify_admin_password(password):
     """Verify admin password"""
@@ -298,12 +466,10 @@ def admin_authentication():
     with st.sidebar:
         st.header("Admin Panel")
         
-        # Check admin session timeout
         if st.session_state.is_admin:
             if check_admin_session_timeout():
                 st.warning("Admin session has timed out. Please login again.")
         
-        # Admin login/logout
         if st.session_state.is_admin:
             st.success("Logged in as Admin")
             if st.button("Logout", key="admin_logout"):
@@ -340,7 +506,6 @@ def admin_authentication():
                 else:
                     st.error("Incorrect password")
 
-        # Super Admin panel (below Admin panel)
         st.header("Super Admin Panel")
         if st.session_state.is_super_admin:
             if check_super_admin_session_timeout():
@@ -377,7 +542,6 @@ def admin_authentication():
                             f.write(uploaded_file.getbuffer())
                         st.success(f"Restored {uploaded_file.name} to {file_path}")
                         logger.info(f"Restored {uploaded_file.name} to {file_path}")
-                        # Reload data if badminton_data.json is restored
                         if uploaded_file.name == "badminton_data.json":
                             load_data()
                 
@@ -551,7 +715,6 @@ def team_formation_section():
     all_players = get_all_available_players()
     player_names = [p["name"] for p in all_players]
     
-    # Add match type selector
     col1, col2 = st.columns([1, 3])
     with col1:
         match_type_display = st.selectbox(
@@ -560,7 +723,6 @@ def team_formation_section():
             index=0 if st.session_state.match_type.lower() == "doubles" else 1,
             key="match_type_select"
         )
-        # Map the display value to the internal value
         st.session_state.match_type = match_type_display.lower()
         logger.info(f"Match type set to: {st.session_state.match_type}")
     
@@ -575,9 +737,7 @@ def team_formation_section():
             if is_selected:
                 available_players.append(player)
     
-    # Combine selected players with waiting queue players
     combined_players = list(available_players) + st.session_state.waiting_queue
-    # Remove duplicates based on player ID
     combined_players_dict = {player["id"]: player for player in combined_players}
     combined_players = list(combined_players_dict.values())
     
@@ -665,47 +825,125 @@ def team_formation_section():
         st.info(f"Waiting: {waiting_text}")
 
 def match_recording_section():
-    """Match recording section"""
+    """Match recording section with prompt input for admins"""
     st.header("✍️ Record Match Results")
     
     match_type = "Singles" if st.session_state.match_type == "singles" else "Doubles"
     st.subheader(f"{match_type} Match")
     
-    if not (st.session_state.current_teams["team_a"] and st.session_state.current_teams["team_b"]):
-        st.warning("Generate teams first before recording match results.")
-        return
-    
-    col1, col2, col3 = st.columns([2, 1, 2])
-    with col1:
-        st.subheader("Team A")
-        for player in st.session_state.current_teams["team_a"]:
-            st.write(f"• {player['name']}")
-        score_a = st.number_input("Score Team A", min_value=0, value=0, step=1, key="score_a", disabled=not st.session_state.is_admin)
-    with col2:
-        st.markdown("<h2 style='text-align: center;'>VS</h2>", unsafe_allow_html=True)
-    with col3:
-        st.subheader("Team B")
-        for player in st.session_state.current_teams["team_b"]:
-            st.write(f"• {player['name']}")
-        score_b = st.number_input("Score Team B", min_value=0, value=0, step=1, key="score_b", disabled=not st.session_state.is_admin)
+    # Existing Form-Based Input
+    if st.session_state.current_teams["team_a"] and st.session_state.current_teams["team_b"]:
+        col1, col2, col3 = st.columns([2, 1, 2])
+        with col1:
+            st.subheader("Team A")
+            for player in st.session_state.current_teams["team_a"]:
+                st.write(f"• {player['name']}")
+            score_a = st.number_input("Score Team A", min_value=0, value=0, step=1, key="score_a", disabled=not st.session_state.is_admin)
+        with col2:
+            st.markdown("<h2 style='text-align: center;'>VS</h2>", unsafe_allow_html=True)
+        with col3:
+            st.subheader("Team B")
+            for player in st.session_state.current_teams["team_b"]:
+                st.write(f"• {player['name']}")
+            score_b = st.number_input("Score Team B", min_value=0, value=0, step=1, key="score_b", disabled=not st.session_state.is_admin)
         
-    match_notes = st.text_area("Match Notes (optional)", key="match_notes", disabled=not st.session_state.is_admin)
-    record_button = st.button("Record Match Result", key="record_match", disabled=not st.session_state.is_admin)
+        match_notes = st.text_area("Match Notes (optional)", key="match_notes", disabled=not st.session_state.is_admin)
+        record_button = st.button("Record Match Result", key="record_match", disabled=not st.session_state.is_admin)
+        if not st.session_state.is_admin:
+            st.info("Admin login required to record match results")
+        if record_button:
+            if score_a == 0 and score_b == 0:
+                st.error("Please enter valid scores for the match.")
+            else:
+                record_match_result(
+                    st.session_state.current_teams["team_a"],
+                    st.session_state.current_teams["team_b"],
+                    score_a,
+                    score_b,
+                    match_notes
+                )
+                st.success("Match recorded successfully!")
+                st.rerun()
+    else:
+        st.warning("Generate teams first before recording match results via form.")
+    
+    # Prompt-Based Input for Admins
+    st.subheader("Record Match via Prompt (Admin Only)")
     if not st.session_state.is_admin:
-        st.info("Admin login required to record match results")
-    if record_button:
-        if score_a == 0 and score_b == 0:
-            st.error("Please enter valid scores for the match.")
-        else:
-            record_match_result(
-                st.session_state.current_teams["team_a"],
-                st.session_state.current_teams["team_b"],
-                score_a,
-                score_b,
-                match_notes
-            )
-            st.success("Match recorded successfully!")
-            st.rerun()
+        st.info("Admin login required to record match results via prompt")
+    else:
+        with st.expander("Enter Match Details Prompt"):
+            st.markdown("""
+            **Instructions**: Enter a prompt describing the match, including:
+            - Player names and their teams (Team A vs. Team B)
+            - Scores for each team
+            - Optional notes (e.g., court number, temporary players)
+            
+            **Example Prompt**: 
+            "Pavan and Lala played against Saurabh and Golu. Pavan's team scored 21 points, Saurabh's team scored 18. Match was on court 1 with 2 temporary players."
+            """)
+            match_prompt = st.text_area("Match Prompt", key="match_prompt")
+            
+            # Initialize session state for match record
+            if 'pending_match_record' not in st.session_state:
+                st.session_state.pending_match_record = None
+            if 'prompt_error' not in st.session_state:
+                st.session_state.prompt_error = None
+            
+            if st.button("Process Match Prompt", key="process_prompt", disabled=not match_prompt):
+                
+                with st.spinner("Processing prompt..."):
+                    result = process_prompt_match_result(match_prompt)
+                    if isinstance(result, str) and result.startswith("Error:"):
+                        st.session_state.prompt_error = result
+                        st.session_state.pending_match_record = None
+                    else:
+                        st.session_state.prompt_error = None
+                        st.session_state.pending_match_record = result
+                    st.rerun()
+            
+            # Display processed match record or error
+            if st.session_state.prompt_error:
+                st.error(st.session_state.prompt_error)
+            elif st.session_state.pending_match_record:
+                st.info("Review the match details below:")
+                # Convert match record to a user-friendly table
+                match_record = st.session_state.pending_match_record
+                team_a_names = [get_player_by_id(pid)["name"] for pid in match_record["team_a"] if get_player_by_id(pid)]
+                team_b_names = [get_player_by_id(pid)["name"] for pid in match_record["team_b"] if get_player_by_id(pid)]
+                display_data = {
+                    "Field": [
+                        "Team A Players",
+                        "Team B Players",
+                        "Score A",
+                        "Score B",
+                        "Winning Team",
+                        "Notes",
+                        "Timestamp"
+                    ],
+                    "Value": [
+                        ", ".join(team_a_names),
+                        ", ".join(team_b_names),
+                        match_record["score_a"],
+                        match_record["score_b"],
+                        f"Team {match_record['winning_team']}",
+                        match_record["notes"],
+                        match_record["timestamp"]
+                    ]
+                }
+                df_display = pd.DataFrame(display_data)
+                st.dataframe(df_display, use_container_width=True)
+                
+                # Confirm and record button
+                if st.button("Confirm and Record", key="confirm_record"):
+                    record_result = record_prompt_match_result(st.session_state.pending_match_record)
+                    if record_result.startswith("Error:"):
+                        st.error(record_result)
+                    else:
+                        st.success("Match recorded successfully!")
+                        st.session_state.pending_match_record = None
+                        st.session_state.prompt_error = None
+                        st.rerun()
 
 def statistics_section():
     """Statistics and analytics section"""
