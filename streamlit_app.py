@@ -692,7 +692,7 @@ def header_section():
                             <b>⭐ Skill Level</b> ➩ Avg: <b>{}</b> | <b>{}</b> 
                         </div>
                         <div style="margin-left: 8px;">
-                            <b>🗝️ Key Insights</b> ➩ {}
+                            <b>🔍 Key Insights</b> ➩ {}
                         </div>
                      </div>
                     """.format(avg_skill, player_skills, interesting_stat),
@@ -763,7 +763,7 @@ def footer_section():
             }}
         </style>
         <div id="footer">
-            Built by <b>XploreMe@Sports</b> with 🧡〔Visits: {visitor_count}〕
+            Built by <b>XploreMe@Sports</b> with 🫰〔Visits: {visitor_count}〕
         </div>
         """,
         unsafe_allow_html=True
