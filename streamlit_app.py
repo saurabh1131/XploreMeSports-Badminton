@@ -1444,7 +1444,11 @@ def chatbot_section():
             message_placeholder = st.empty()
             message_placeholder.markdown("Thinking...")
             try:
-                response_content = process_query(user_query)
+                # Generate LLM stats
+                all_players = st.session_state.predefined_players + st.session_state.temp_players
+                match_records = st.session_state.match_history
+                # calling LLM
+                response_content = process_query(user_query, all_players, match_records)
                 log_chat_question_answer(user_query, response_content)
                 message_placeholder.markdown(response_content)
                 st.session_state.chat_history.append({"role": "assistant", "content": response_content})
@@ -1453,39 +1457,59 @@ def chatbot_section():
                 message_placeholder.markdown(f"Error processing your query: {str(e)}")
                 st.error("Failed to get a response from the model. Please check the logs.")
 
-def process_query(user_query):
+def process_query(user_query, players, match_history):
     """Process the user query with the LLM"""
     try:
-        try:
-            with open('badminton_data.json', 'r', encoding='utf-8') as file:
-                badminton_data = json.load(file)
-        except FileNotFoundError:
-            badminton_data = "Error: The badminton_data.json file was not found. Also, please recommend that the user play some matches."
-        except json.JSONDecodeError:
-            return "Error: Invalid JSON format in badminton_data.json."
-        
+        # Prepare player stats summary
+        player_stats = []
+        for player in players:
+            win_rate = (player["wins"] / player["games_played"] * 100) if player["games_played"] > 0 else 0
+            avg_points = player["points_scored"] / player["games_played"] if player["games_played"] > 0 else 0
+            player_stats.append({
+                "name": player["name"],
+                "games_played": player["games_played"],
+                "wins": player["wins"],
+                "points_scored": player["points_scored"],
+                "win_rate": round(win_rate, 1),
+                "avg_points_per_game": round(avg_points, 1)
+            })
+
+        # Prepare match history summary
+        match_summary = [
+            {
+                "timestamp": match["timestamp"],
+                "team_a": [get_player_by_id(pid)["name"] for pid in match["team_a"] if get_player_by_id(pid)],
+                "score_a": match["score_a"],
+                "team_b": [get_player_by_id(pid)["name"] for pid in match["team_b"] if get_player_by_id(pid)],
+                "score_b": match["score_b"],
+                "winning_team": match["winning_team"],
+                "notes": match["notes"],
+            } for match in match_history
+        ]
+
         last_five_questions = []
         user_messages = [msg for msg in reversed(st.session_state.chat_history) if msg["role"] == "user"]
         for i in range(min(5, len(user_messages))):
             last_five_questions.append(user_messages[i]["content"])
         
+        
         prompt_template = ChatPromptTemplate.from_template(
-            """You are BadmintonBuddy, a super chill and fun badminton assistant who loves to chat about the game like a best friend! Your main job is to answer questions about the provided badminton data in JSON format, but you can also tackle general badminton topics (like rules or strategies) or even off-topic stuff if it makes sense. Here’s how to roll:
+            """You are BadmintonBuddy, a super chill, mathematicians, statisticians and fun badminton assistant who loves to chat about the game like a best friend! Your main job is to answer questions about the provided badminton data in JSON format, but you can also tackle general badminton topics (like rules or strategies) or even off-topic stuff if it makes sense. Here’s how to roll:
 
 1. **Figure Out the Vibe**:
-   - Check if the user’s question is about the JSON data, general badminton stuff, or something totally random.
+   - Check if the user’s question is about the historic match data, general badminton stuff, or something totally random.
    - Use the last 5 user questions to understand the conversation context and tailor your response accordingly.
 
-2. **If It’s About the JSON Data**:
-   - Dig into the JSON to get the scoop (think players, matches, stats, etc.).
+2. **If It’s About the Historic Match Data**:
+   - Dig into the historic match data to get the scoop (think players, matches, stats, etc.).
    - Answer the question in a fun, clear way—use bullet points or headings if it helps!
    - If the question’s a bit vague (like “who’s the best player?”), assume something reasonable (maybe most wins?) and explain your thinking.
    - Handle weird cases like a pro:
-     - If the JSON’s empty or missing stuff, say so and give what you can.
-     - If the question asks for something not in the JSON, let them know and maybe throw in a general answer.
+     - If the historic match data empty or missing stuff, say so and give what you can.
+     - If the question asks for something not in the historic match data, let them know and maybe throw in a general answer.
      - If the question’s confusing, say why and suggest a different way to look at it.
 
-3. **If It’s Badminton-Related but Not JSON Data**:
+3. **If It’s Badminton-Related but Not Historic Match Data Data**:
    - Share your badminton know-how (rules, tips, fun facts) in a friendly way.
    - Mention that you’re going off general knowledge, not the data.
 
@@ -1493,22 +1517,26 @@ def process_query(user_query):
    - Be nice and say your main gig is badminton, but try to give a quick, helpful answer if you can.
    - If it’s way out of your league, suggest tweaking the question to something badminton-related.
 
-5. **Keep It Short but Sweet**:
+5. **Keep It Short but also Sweet & Informative**:
    - Don’t ramble, but make sure you cover what they asked. Think of it like a quick chat over a shuttlecock!
 
 6. **Be a Buddy, Not a Robot**:
    - Talk like you’re hanging out with a friend—casual, fun, and maybe a little goofy!
-   - If the user’s question has a playful tone (like mentioning a “lucky racket” or “comeback queen”), lean into it with some humor—maybe throw in a silly suggestion or a fun emoji. 🏸
+   - If the user’s question has a playful tone, lean into it with some humor—maybe throw in a silly suggestion or a fun emoji. 🏸
    - Even for serious questions, keep it light and engaging, like you’re cheering them on.
 
-**JSON Data**:
-{badminton_data}
-
+7. **Inputs**:
 **Last 5 User Questions**:
 {last_questions}
 
 **User's Current Question**:
 {user_ask}
+
+**Historic Match Data**:
+{match_summary}
+
+**Individual Performances**:
+{player_stats}
 
 Give your answer in a clear, buddy-like way, using headings or bullet points if needed, and toss in some fun where it fits!""")
         
@@ -1519,9 +1547,11 @@ Give your answer in a clear, buddy-like way, using headings or bullet points if 
         )
         
         prompt = prompt_template.format(
-            badminton_data=json.dumps(badminton_data, indent=2),
             last_questions="\n".join(last_five_questions) if last_five_questions else "No previous questions.",
-            user_ask=user_query
+            user_ask=user_query,
+            match_summary = json.dumps(match_summary, indent=2),
+            player_stats = json.dumps(player_stats, indent=2)
+
         )
         message = HumanMessage(content=prompt)
         response = model.invoke([message])
