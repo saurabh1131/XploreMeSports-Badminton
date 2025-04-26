@@ -939,7 +939,7 @@ def match_recording_section():
         st.warning("Generate teams first before recording match results via form.")
     
     # Prompt-Based Input for Admins
-    st.subheader("Record Match via Prompt (Admin Only)")
+    st.subheader("Record Match via Prompt")
     if not st.session_state.is_admin:
         st.info("Admin login required to record match results via prompt")
     else:
