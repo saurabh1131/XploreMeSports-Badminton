@@ -634,7 +634,7 @@ def admin_authentication():
 # App Components
 def header_section():
     """App header section"""
-    st.title("✨XploreMeAtSports: Badminton🏸")
+    st.title("🏸 Badminton - XploreMeAtSports")
     st.markdown("Manage your badminton matches, teams, and stats!")
 
     try:
