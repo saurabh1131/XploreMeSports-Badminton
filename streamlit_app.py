@@ -658,11 +658,11 @@ def header_section():
                     f"Avg Skill = {avg_skill}, Player Skills = {player_skills}, Interesting Stat = {interesting_stat}")
         
         # Display AI Stats expander
-        with st.expander("📊🤖 Season AI Stats", expanded=True):
+        with st.expander("Season Stats〔Powered by AI 🤖〕", expanded=True, icon='📊'):
             st.markdown(
                 """
                 <div style="padding: 10px; background-color: #4169E1; color: white; border-radius: 5px; margin-bottom: 10px;">
-                    <div style="margin-left: 20px;">
+                    <div style="margin-left: 10px;">
                         🏸 Matches: <b>{}</b> | Points: <b>{}</b>
                     </div>
                 </div>
@@ -673,10 +673,10 @@ def header_section():
                 st.markdown(
                     """
                     <div style="padding: 10px; background-color: #4169E1; color: white; border-radius: 5px; margin-bottom: 10px;">
-                        <div style="margin-left: 20px;">
+                        <div style="margin-left: 10px;">
                             <b>⭐ Skill Level</b> ➩ Avg: <b>{}</b> | <b>{}</b> 
                         </div>
-                        <div style="margin-left: 20px;">
+                        <div style="margin-left: 10px;">
                             <b>🗝️ Key Insights</b> ➩ {}
                         </div>
                      </div>
