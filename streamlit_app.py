@@ -349,7 +349,7 @@ def process_prompt_match_result(prompt):
 2. **Map Player Names to IDs**:
    - Use the `predefined_players` and `temp_players` (if mentioned) from the JSON data to find player IDs.
    - Match player names case-insensitively.
-   - If temporary players are mentioned, generate a random player ID for them.  If the temporary player is not mentioned and the name is not found, return an error message like "Error: Player <name> not found in the player list, advice to add the player."
+   - If temporary players are mentioned, generate a random player ID for them. If the temporary player is not mentioned and the name is not found, return an error message like "Error: Player <name> not found in the player list, advice to add the player."
 
 3. **Determine Match Details**:
    - Assign players to `team_a` and `team_b` based on the prompt.
@@ -383,7 +383,7 @@ def process_prompt_match_result(prompt):
 **User Prompt**:
 {prompt}
 
-**Matches History JSON Data with indent=2**:
+**Matches History Data (with json indent=2)**:
 {json.dumps(badminton_data, indent=2)}
 """
         
@@ -421,6 +421,7 @@ def process_prompt_match_result(prompt):
     except Exception as e:
         logger.error(f"Prompt processing error: {str(e)}")
         return f"Error: Failed to process prompt: {str(e)}"
+    
 def record_prompt_match_result(match_record):
     """Append match record from prompt to match history and update stats"""
     try:
@@ -442,10 +443,11 @@ def record_prompt_match_result(match_record):
         if match_record["score_a"] < 0 or match_record["score_b"] < 0:
             return f"Error: Scores cannot be negative"
         
+        # No need to check team size as handled by the propmt
         # Validate team sizes based on match type
-        expected_players = 1 if st.session_state.match_type == "singles" else 2
-        if len(match_record["team_a"]) != expected_players or len(match_record["team_b"]) != expected_players:
-            return f"Error: Incorrect number of players per team. Expected {expected_players} per team."
+        # expected_players = 1 if st.session_state.match_type == "singles" else 2
+        # if len(match_record["team_a"]) != expected_players or len(match_record["team_b"]) != expected_players:
+        #     return f"Error: Incorrect number of players per team. Expected {expected_players} per team."
         
         # Update player stats
         for pid in match_record["team_a"]:
@@ -640,6 +642,7 @@ def admin_authentication():
             if st.button("Login", key="super_admin_login"):
                 if verify_super_admin_password(super_admin_password):
                     st.session_state.is_super_admin = True
+                    st.session_state.is_admin = True
                     st.session_state.super_admin_authenticated_time = datetime.datetime.now()
                     st.success("Super Admin login successful")
                     st.rerun()
