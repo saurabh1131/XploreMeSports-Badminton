@@ -1629,76 +1629,67 @@ def upload_to_drive(chat_history=False, match_history=False, files=None):
         if not files_to_upload:
             logger.warning("No output files found to upload")
             return False
-        
+
         drive_service = get_drive_service()
         if not drive_service:
             logger.error("Failed to get Google Drive service")
             return False
-        
+
         ist = pytz.timezone('Asia/Kolkata')
-        timestamp = datetime.datetime.now(ist).strftime("%d-%b-%Y")  # e.g., 25-Apr-2025
+        timestamp = datetime.datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S")
         target_folder_id = '1u5w1ESII4eCx9CE6LGp-ehPJd3rTriZf'
-        
+
         uploaded_files = []
         for file_path in files_to_upload:
             file_name = os.path.basename(file_path)
-            # Append date to filename
-            base_name = file_name.rsplit('.', 1)[0]  # Get name without extension
-            extension = file_name.rsplit('.', 1)[1]  # Get extension
-            new_file_name = f"{base_name}_{timestamp}.{extension}"
-            
-            query = f"name = '{new_file_name}' and trashed = false"
-            
+            query = f"name = '{file_name}' and trashed = false"
+
             response = drive_service.files().list(
                 q=query,
                 spaces='drive',
                 fields='files(id, name, parents)'
             ).execute()
-            
+
             file_metadata = {
-                'name': new_file_name,
+                'name': file_name,
                 'parents': [target_folder_id]
             }
-            
+
             media = MediaFileUpload(
                 file_path,
                 resumable=True
             )
-            
-            # logger.info(f"Checking for existing file: {response.get('files')}")
+
             if response.get('files'):
-                file_name = response['files'][0]['name']
-                if file_name == new_file_name:
-                    logger.info(f"File already exists, so updating it: {new_file_name}")
-                    file_id = response['files'][0]['id']
-                    current_parents = response['files'][0].get('parents', [])
-                    
-                    if target_folder_id not in current_parents:
-                        logger.info(f"Moving {new_file_name} to target folder")
-                        file = drive_service.files().update(
-                            fileId=file_id,
-                            addParents=target_folder_id,
-                            removeParents=','.join(current_parents),
-                            media_body=media,
-                            fields='id, parents'
-                        ).execute()
-                    else:
-                        logger.info(f"Updating existing file: {new_file_name}")
-                        file = drive_service.files().update(
-                            fileId=file_id,
-                            media_body=media,
-                            fields='id'
-                        ).execute()
+                file_id = response['files'][0]['id']
+                current_parents = response['files'][0].get('parents', [])
+
+                if target_folder_id not in current_parents:
+                    logger.info(f"Moving {file_name} to target folder")
+                    file = drive_service.files().update(
+                        fileId=file_id,
+                        addParents=target_folder_id,
+                        removeParents=','.join(current_parents),
+                        media_body=media,
+                        fields='id, parents'
+                    ).execute()
+                else:
+                    logger.info(f"Updating existing file: {file_name}")
+                    file = drive_service.files().update(
+                        fileId=file_id,
+                        media_body=media,
+                        fields='id'
+                    ).execute()
             else:
-                logger.info(f"Uploading new file: {new_file_name}")
+                logger.info(f"Uploading new file: {file_name}")
                 file = drive_service.files().create(
                     body=file_metadata,
                     media_body=media,
                     fields='id'
                 ).execute()
-            
-            uploaded_files.append(new_file_name)
-        
+
+            uploaded_files.append(file_name)
+
         logger.info(f"Successfully uploaded {', '.join(uploaded_files)} to Google Drive")
         return True
     except Exception as e:
