@@ -514,7 +514,8 @@ def admin_authentication():
         st.header("Admin Panel")
         
         # Admin Session Timeout Check
-        if st.session_state.get('is_admin') and check_session_timeout(st.session_state.get('admin_authenticated_time'), "Admin"):
+        admin_authenticated_time = st.session_state.get('admin_authenticated_time', None)
+        if st.session_state.get('is_admin') and admin_authenticated_time and check_session_timeout(admin_authenticated_time, "Admin"):
             st.warning("Admin session has timed out. Please login again.")
             st.session_state.is_admin = False
             st.session_state.admin_authenticated_time = None
@@ -532,17 +533,18 @@ def admin_authentication():
                 new_password = st.text_input("New Password", type="password", key="new_pass")
                 confirm_password = st.text_input("Confirm New Password", type="password", key="confirm_pass")
                 
-                if st.button("Change Password", key="change_admin_password"):
-                    if not verify_admin_password(current_password):
-                        st.error("Current password is incorrect")
-                    elif new_password != confirm_password:
-                        st.error("New passwords do not match")
-                    elif len(new_password) < 6:
-                        st.error("New password must be at least 6 characters")
-                    else:
-                        st.session_state.admin_password_hash = hashlib.sha256(new_password.encode()).hexdigest()
-                        save_data()
-                        st.success("Password changed successfully")
+                if 'admin_password_hash' not in st.session_state:
+                    st.session_state.admin_password_hash = hashlib.sha256("admin123".encode()).hexdigest()
+                if not verify_admin_password(current_password):
+                    st.error("Current password is incorrect")
+                elif new_password != confirm_password:
+                    st.error("New password must be at least 6 characters long for security reasons")
+                elif len(new_password) < 6:
+                    st.error("New password must be at least 6 characters")
+                else:
+                    st.session_state.admin_password_hash = hashlib.sha256(new_password.encode()).hexdigest()
+                    save_data()
+                    st.success("Password changed successfully")
         else:
             st.info("Login to access admin features")
             admin_password = st.text_input("Admin Password", type="password", key="admin_pass")
@@ -580,18 +582,25 @@ def admin_authentication():
                 
                 if uploaded_files:
                     for uploaded_file in uploaded_files:
-                        if uploaded_file.name not in allowed_files:
+                        if uploaded_file.name.lower() not in [file.lower() for file in allowed_files]:
                             st.error(f"Invalid file name. Allowed files: {', '.join(allowed_files)}")
                             continue
                         file_path = os.path.join(os.getcwd(), uploaded_file.name)
-                        if os.path.exists(file_path):
-                            backup_path = f"{file_path}.bak"
-                            shutil.copy2(file_path, backup_path)
-                            logger.info(f"Backed up {file_path} to {backup_path}")
-                        with open(file_path, "wb") as f:
-                            f.write(uploaded_file.getbuffer())
-                        st.success(f"Restored {uploaded_file.name} to {file_path}")
-                        logger.info(f"Restored {uploaded_file.name} to {file_path}")
+                        try:
+                            if os.path.exists(file_path):
+                                backup_path = f"{file_path}.bak"
+                                shutil.copy2(file_path, backup_path)
+                                logger.info(f"Backed up {file_path} to {backup_path}")
+                            with open(file_path, "wb") as f:
+                                f.write(uploaded_file.getbuffer())
+                            st.success(f"Restored {uploaded_file.name} to {file_path}")
+                            logger.info(f"Restored {uploaded_file.name} to {file_path}")
+                        except FileNotFoundError:
+                            st.error(f"File {file_path} was not found during the operation.")
+                            logger.error(f"File {file_path} was not found during the operation.")
+                        except Exception as e:
+                            st.error(f"An error occurred while restoring {uploaded_file.name}: {str(e)}")
+                            logger.error(f"An error occurred while restoring {uploaded_file.name}: {str(e)}")
                         if uploaded_file.name == "badminton_data.json":
                             load_data()
                 
@@ -637,17 +646,18 @@ def admin_authentication():
                         logger.error(f"Error listing files in working directory: {str(e)}")
                         st.error(f"Failed to list files: {str(e)}")
         else:
-            st.info("Login to access super admin features")
-            super_admin_password = st.text_input("Super Admin Password", type="password", key="super_admin_pass")
-            if st.button("Login", key="super_admin_login"):
-                if verify_super_admin_password(super_admin_password):
-                    st.session_state.is_super_admin = True
-                    st.session_state.is_admin = True
-                    st.session_state.super_admin_authenticated_time = datetime.datetime.now()
-                    st.success("Super Admin login successful")
-                    st.rerun()
-                else:
-                    st.error("Incorrect password")
+            with st.expander("Super Admin Panel", expanded=False):
+                st.info("Login to access super admin features")
+                super_admin_password = st.text_input("Super Admin Password", type="password", key="super_admin_pass")
+                if st.button("Login", key="super_admin_login"):
+                    if verify_super_admin_password(super_admin_password):
+                        st.session_state.is_super_admin = True
+                        st.session_state.is_admin = True
+                        st.session_state.super_admin_authenticated_time = datetime.datetime.now()
+                        st.success("Super Admin login successful")
+                        st.rerun()
+                    else:
+                        st.error("Incorrect password")
 
 # App Components
 def header_section():
