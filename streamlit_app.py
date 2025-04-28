@@ -122,9 +122,35 @@ if 'super_admin_authenticated_time' not in st.session_state:
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
 
+def load_credentials():
+    """Load Gemini API key and model from credentials.json with environment variable fallback"""
+    try:
+        credentials_file = "credentials.json"
+        if not os.path.exists(credentials_file):
+            logger.error("credentials.json file not found. Creating with default values.")
+            default_credentials = {
+                "gemini_api_key": os.getenv("GEMINI_API_KEY", ""),
+                "llm_model": "gemini-2.0-flash"
+            }
+            with open(credentials_file, 'w') as f:
+                json.dump(default_credentials, f, indent=2)
+            return default_credentials["gemini_api_key"], default_credentials["llm_model"]
+
+        with open(credentials_file, 'r') as f:
+            credentials = json.load(f)
+            api_key = credentials.get("gemini_api_key", os.getenv("GEMINI_API_KEY", ""))
+            llm_model = credentials.get("llm_model", "gemini-2.0-flash")
+            if not api_key:
+                logger.warning("Gemini API key not found in credentials.json or environment variable")
+            return api_key, llm_model
+    except Exception as e:
+        logger.error(f"Error loading credentials: {str(e)}")
+        return "", "gemini-2.0-flash"
+    
 if 'api_key_configured' not in st.session_state:
-    st.session_state.api_key = "AIzaSyCvR-EJDDqU881df2CrjgDaQjejttoARXw"
-    st.session_state.llm_model = "gemini-2.0-flash"
+    api_key, llm_model = load_credentials()
+    st.session_state.api_key = api_key
+    st.session_state.llm_model = llm_model
     st.session_state.api_key_configured = True
 
 if 'match_type' not in st.session_state:
@@ -514,8 +540,7 @@ def admin_authentication():
         st.header("Admin Panel")
         
         # Admin Session Timeout Check
-        admin_authenticated_time = st.session_state.get('admin_authenticated_time', None)
-        if st.session_state.get('is_admin') and admin_authenticated_time and check_session_timeout(admin_authenticated_time, "Admin"):
+        if st.session_state.get('is_admin') and check_session_timeout(st.session_state.get('admin_authenticated_time'), "Admin"):
             st.warning("Admin session has timed out. Please login again.")
             st.session_state.is_admin = False
             st.session_state.admin_authenticated_time = None
@@ -533,18 +558,17 @@ def admin_authentication():
                 new_password = st.text_input("New Password", type="password", key="new_pass")
                 confirm_password = st.text_input("Confirm New Password", type="password", key="confirm_pass")
                 
-                if 'admin_password_hash' not in st.session_state:
-                    st.session_state.admin_password_hash = hashlib.sha256("admin123".encode()).hexdigest()
-                if not verify_admin_password(current_password):
-                    st.error("Current password is incorrect")
-                elif new_password != confirm_password:
-                    st.error("New password must be at least 6 characters long for security reasons")
-                elif len(new_password) < 6:
-                    st.error("New password must be at least 6 characters")
-                else:
-                    st.session_state.admin_password_hash = hashlib.sha256(new_password.encode()).hexdigest()
-                    save_data()
-                    st.success("Password changed successfully")
+                if st.button("Change Password", key="change_admin_password"):
+                    if not verify_admin_password(current_password):
+                        st.error("Current password is incorrect")
+                    elif new_password != confirm_password:
+                        st.error("New passwords do not match")
+                    elif len(new_password) < 6:
+                        st.error("New password must be at least 6 characters")
+                    else:
+                        st.session_state.admin_password_hash = hashlib.sha256(new_password.encode()).hexdigest()
+                        save_data()
+                        st.success("Password changed successfully")
         else:
             st.info("Login to access admin features")
             admin_password = st.text_input("Admin Password", type="password", key="admin_pass")
@@ -582,25 +606,18 @@ def admin_authentication():
                 
                 if uploaded_files:
                     for uploaded_file in uploaded_files:
-                        if uploaded_file.name.lower() not in [file.lower() for file in allowed_files]:
+                        if uploaded_file.name not in allowed_files:
                             st.error(f"Invalid file name. Allowed files: {', '.join(allowed_files)}")
                             continue
                         file_path = os.path.join(os.getcwd(), uploaded_file.name)
-                        try:
-                            if os.path.exists(file_path):
-                                backup_path = f"{file_path}.bak"
-                                shutil.copy2(file_path, backup_path)
-                                logger.info(f"Backed up {file_path} to {backup_path}")
-                            with open(file_path, "wb") as f:
-                                f.write(uploaded_file.getbuffer())
-                            st.success(f"Restored {uploaded_file.name} to {file_path}")
-                            logger.info(f"Restored {uploaded_file.name} to {file_path}")
-                        except FileNotFoundError:
-                            st.error(f"File {file_path} was not found during the operation.")
-                            logger.error(f"File {file_path} was not found during the operation.")
-                        except Exception as e:
-                            st.error(f"An error occurred while restoring {uploaded_file.name}: {str(e)}")
-                            logger.error(f"An error occurred while restoring {uploaded_file.name}: {str(e)}")
+                        if os.path.exists(file_path):
+                            backup_path = f"{file_path}.bak"
+                            shutil.copy2(file_path, backup_path)
+                            logger.info(f"Backed up {file_path} to {backup_path}")
+                        with open(file_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+                        st.success(f"Restored {uploaded_file.name} to {file_path}")
+                        logger.info(f"Restored {uploaded_file.name} to {file_path}")
                         if uploaded_file.name == "badminton_data.json":
                             load_data()
                 
@@ -610,41 +627,70 @@ def admin_authentication():
 
                 # List and Download Files
                 st.subheader("List and Download Files")
-                if not st.session_state.is_super_admin:
-                    st.info("Super admin access required to list and download files.")
-                else:
+                try:
+                    files = [f for f in os.listdir(os.getcwd()) if os.path.isfile(os.path.join(os.getcwd(), f))]
+                    if not files:
+                        st.info("No files found in the working directory.")
+                    else:
+                        logger.info("Listing files in working directory")
+                        selected_file = st.selectbox("Select a file to download", files, key="download_file_select")
+                        if selected_file:
+                            file_path = os.path.join(os.getcwd(), selected_file)
+                            mime_type = (
+                                "application/json" if selected_file.endswith(".json") else
+                                "text/plain" if selected_file.endswith(".log") else
+                                "application/octet-stream"
+                            )
+                            try:
+                                with open(file_path, "rb") as f:
+                                    file_content = f.read()
+                                if st.download_button(
+                                    label=f"Download {selected_file}",
+                                    data=file_content,
+                                    file_name=selected_file,
+                                    mime=mime_type,
+                                    key=f"download_{selected_file}"
+                                ):
+                                    logger.info(f"Downloaded file: {selected_file}")
+                                    st.success(f"Downloaded {selected_file} successfully!")
+                            except Exception as e:
+                                logger.error(f"Error reading file {selected_file}: {str(e)}")
+                                st.error(f"Failed to read {selected_file}: {str(e)}")
+                except Exception as e:
+                    logger.error(f"Error listing files in working directory: {str(e)}")
+                    st.error(f"Failed to list files: {str(e)}")
+
+                # Add Gemini API Key and Model Configuration
+                st.subheader("Configure Gemini API Key and Model")
+                current_api_key = st.session_state.api_key
+                current_model = st.session_state.llm_model
+                available_models = [
+                    "gemini-2.0-flash",
+                    "gemini-2.0-flash-lite"
+                ]
+
+                new_api_key = st.text_input("Gemini API Key", value=current_api_key, type="password", key="gemini_api_key_input")
+                new_model = st.selectbox("Select LLM Model", options=available_models, index=available_models.index(current_model) if current_model in available_models else 0, key="llm_model_select")
+
+                if st.button("Save Gemini Configuration", key="save_gemini_config"):
                     try:
-                        files = [f for f in os.listdir(os.getcwd()) if os.path.isfile(os.path.join(os.getcwd(), f))]
-                        if not files:
-                            st.info("No files found in the working directory.")
-                        else:
-                            logger.info("Listing files in working directory")
-                            selected_file = st.selectbox("Select a file to download", files, key="download_file_select")
-                            if selected_file:
-                                file_path = os.path.join(os.getcwd(), selected_file)
-                                mime_type = (
-                                    "application/json" if selected_file.endswith(".json") else
-                                    "text/plain" if selected_file.endswith(".log") else
-                                    "application/octet-stream"
-                                )
-                                try:
-                                    with open(file_path, "rb") as f:
-                                        file_content = f.read()
-                                    if st.download_button(
-                                        label=f"Download {selected_file}",
-                                        data=file_content,
-                                        file_name=selected_file,
-                                        mime=mime_type,
-                                        key=f"download_{selected_file}"
-                                    ):
-                                        logger.info(f"Downloaded file: {selected_file}")
-                                        st.success(f"Downloaded {selected_file} successfully!")
-                                except Exception as e:
-                                    logger.error(f"Error reading file {selected_file}: {str(e)}")
-                                    st.error(f"Failed to read {selected_file}: {str(e)}")
+                        credentials_file = "credentials.json"
+                        credentials = {}
+                        if os.path.exists(credentials_file):
+                            with open(credentials_file, 'r') as f:
+                                credentials = json.load(f)
+                        credentials["gemini_api_key"] = new_api_key
+                        credentials["llm_model"] = new_model
+                        with open(credentials_file, 'w') as f:
+                            json.dump(credentials, f, indent=2)
+                        st.session_state.api_key = new_api_key
+                        st.session_state.llm_model = new_model
+                        st.success("Gemini API Key and Model updated successfully!")
+                        logger.info(f"Updated Gemini API Key and Model: {new_model}")
+                        st.rerun()
                     except Exception as e:
-                        logger.error(f"Error listing files in working directory: {str(e)}")
-                        st.error(f"Failed to list files: {str(e)}")
+                        logger.error(f"Error saving Gemini configuration: {str(e)}")
+                        st.error(f"Failed to save Gemini configuration: {str(e)}")
         else:
             with st.expander("Super Admin Panel", expanded=False):
                 st.info("Login to access super admin features")
