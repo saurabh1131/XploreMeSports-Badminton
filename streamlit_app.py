@@ -71,6 +71,9 @@ st.set_page_config(
     layout="wide"
 )
 
+# config file
+CONFIG_FILE = "config.json"
+
 # Load timeout from environment variable (default 2 hours)
 ADMIN_SESSION_TIMEOUT = int(os.getenv("ADMIN_SESSION_TIMEOUT", 7200))  # Default 2 hours in seconds
 logger.info(f"Admin session timeout set to {ADMIN_SESSION_TIMEOUT} seconds")
@@ -553,7 +556,7 @@ def admin_authentication():
                 st.rerun()
             
             with st.expander("Admin Settings"):
-                st.subheader("Change Admin Password")
+                st.subheader("Change Admin Password", divider=True)
                 current_password = st.text_input("Current Password", type="password", key="current_pass")
                 new_password = st.text_input("New Password", type="password", key="new_pass")
                 confirm_password = st.text_input("Confirm New Password", type="password", key="confirm_pass")
@@ -595,7 +598,7 @@ def admin_authentication():
                 st.rerun()
             
             with st.expander("Super Admin Settings"):
-                st.subheader("Restore Backup Files")
+                st.subheader("Restore Backup Files", divider=True)
                 allowed_files = {"service-account-key.json", "chat_history.json", "badminton_data.json", "visitor_count.json"}
                 uploaded_files = st.file_uploader(
                     "Upload backup files",
@@ -626,7 +629,7 @@ def admin_authentication():
                     st.success("Files synced to Google Drive!" if success else "Sync failed. Check logs.")
 
                 # List and Download Files
-                st.subheader("List and Download Files")
+                st.subheader("List and Download Files", divider=True)
                 try:
                     files = [f for f in os.listdir(os.getcwd()) if os.path.isfile(os.path.join(os.getcwd(), f))]
                     if not files:
@@ -661,7 +664,7 @@ def admin_authentication():
                     st.error(f"Failed to list files: {str(e)}")
 
                 # Add Gemini API Key and Model Configuration
-                st.subheader("Configure Gemini API Key and Model")
+                st.subheader("Configure Gemini API Key and Model", divider=True)
                 current_api_key = st.session_state.api_key
                 current_model = st.session_state.llm_model
                 available_models = [
@@ -691,6 +694,18 @@ def admin_authentication():
                     except Exception as e:
                         logger.error(f"Error saving Gemini configuration: {str(e)}")
                         st.error(f"Failed to save Gemini configuration: {str(e)}")
+                
+                # Add toggle for enabling/disabling upload to Google Drive
+                st.subheader("Google Drive Upload Configuration", divider=True)
+                upload_to_drive_enabled = st.checkbox(
+                    "Enable Upload to Google Drive",
+                    value=st.session_state.config["upload_to_drive_enabled"],
+                    key="upload_to_drive_toggle")
+                if upload_to_drive_enabled != st.session_state.config["upload_to_drive_enabled"]:
+                    st.session_state.config["upload_to_drive_enabled"] = upload_to_drive_enabled
+                    save_config(st.session_state.config)
+                    st.success("Google Drive upload configuration updated!")
+                    logger.info(f"Upload to Google Drive set to: {upload_to_drive_enabled}")
         else:
             with st.expander("Super Admin Panel", expanded=False):
                 st.info("Login to access super admin features")
@@ -835,7 +850,7 @@ def player_management_section():
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("Predefined Players")
+        st.subheader("Predefined Players", divider=True)
         df_predefined = pd.DataFrame(st.session_state.predefined_players)
         if not df_predefined.empty:
             columns_order = ["name", "games_played", "wins", "points_scored"]
@@ -866,7 +881,7 @@ def player_management_section():
                     st.error("Please enter a player name")
     
     with col2:
-        st.subheader("Temporary Players")
+        st.subheader("Temporary Players", divider=True)
         df_temp = pd.DataFrame(st.session_state.temp_players)
         if not df_temp.empty:
             columns_order = ["name", "skill_level", "games_played", "wins", "points_scored"]
@@ -932,7 +947,7 @@ def team_formation_section():
         st.session_state.match_type = match_type_display.lower()
         logger.info(f"Match type set to: {st.session_state.match_type}")
     
-    st.subheader("Select Available Players")
+    st.subheader("Select Available Players", divider=True)
     available_players = []
     num_cols = 3
     cols = st.columns(num_cols)
@@ -949,7 +964,7 @@ def team_formation_section():
     
     logger.info(f"Combined players for team generation: {[p['name'] for p in combined_players]}")
     
-    st.subheader("Team Generation")
+    st.subheader("Team Generation", divider=True)
     col1, col2 = st.columns(2)
     
     min_players_required = 4 if st.session_state.match_type == "doubles" else 2
@@ -990,15 +1005,15 @@ def team_formation_section():
     if st.session_state.current_teams["team_a"] and st.session_state.current_teams["team_b"]:
         col1, col2 = st.columns(2)
         with col1:
-            st.subheader("Team A")
+            st.subheader("Team A", divider=True)
             for player in st.session_state.current_teams["team_a"]:
                 st.write(f"• {player['name']}")
         with col2:
-            st.subheader("Team B")
+            st.subheader("Team B", divider=True)
             for player in st.session_state.current_teams["team_b"]:
                 st.write(f"• {player['name']}")
     elif last_match:
-        st.subheader("Last Match Teams")
+        st.subheader("Last Match Teams", divider=True)
         
         score_a = last_match["score_a"]
         score_b = last_match["score_b"]
@@ -1026,7 +1041,7 @@ def team_formation_section():
         st.info("Click 'Rematch with Last Teams' above to use these teams again.")
     
     if st.session_state.waiting_queue:
-        st.subheader("Players Waiting")
+        st.subheader("Players Waiting", divider=True)
         waiting_text = ", ".join([p["name"] for p in st.session_state.waiting_queue])
         st.info(f"Waiting: {waiting_text}")
 
@@ -1035,20 +1050,20 @@ def match_recording_section():
     st.header("✍️ Record Match Results")
     
     match_type = "Singles" if st.session_state.match_type == "singles" else "Doubles"
-    st.subheader(f"{match_type} Match")
+    st.subheader(f"{match_type} Match", divider=True)
     
     # Existing Form-Based Input
     if st.session_state.current_teams["team_a"] and st.session_state.current_teams["team_b"]:
         col1, col2, col3 = st.columns([2, 1, 2])
         with col1:
-            st.subheader("Team A")
+            st.subheader("Team A", divider=True)
             for player in st.session_state.current_teams["team_a"]:
                 st.write(f"• {player['name']}")
             score_a = st.number_input("Score Team A", min_value=0, value=0, step=1, key="score_a", disabled=not st.session_state.is_admin)
         with col2:
             st.markdown("<h2 style='text-align: center;'>VS</h2>", unsafe_allow_html=True)
         with col3:
-            st.subheader("Team B")
+            st.subheader("Team B", divider=True)
             for player in st.session_state.current_teams["team_b"]:
                 st.write(f"• {player['name']}")
             score_b = st.number_input("Score Team B", min_value=0, value=0, step=1, key="score_b", disabled=not st.session_state.is_admin)
@@ -1074,7 +1089,7 @@ def match_recording_section():
         st.warning("Generate teams first before recording match results via form.")
     
     # Prompt-Based Input for Admins
-    st.subheader("Record Match via Prompt")
+    st.subheader("Record Match via Prompt", divider=True)
     if not st.session_state.is_admin:
         st.info("Admin login required to record match results via prompt")
     else:
@@ -1268,7 +1283,7 @@ def statistics_section():
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["Player Stats", "Match History", "Team Analysis", "Performance Over Time", "Advanced Analytics"])
 
     with tab1:
-        st.subheader("Player Performance")
+        st.subheader("Player Performance", divider=True)
         all_players = st.session_state.predefined_players + st.session_state.temp_players
         if all_players:
             df_players = pd.DataFrame(all_players)
@@ -1283,14 +1298,14 @@ def statistics_section():
             if not df_players.empty and df_players["games_played"].sum() > 0:
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.subheader("Win Rate by Player")
+                    st.subheader("Win Rate by Player", divider=True)
                     fig = px.bar(df_players[df_players["games_played"] > 0].sort_values("win_rate", ascending=False),
                                  x="name", y="win_rate", title="Win Rate by Player",
                                  labels={"win_rate": "Win Rate (%)", "name": "Player Name"})
                     fig.update_layout(xaxis_tickangle=-45)
                     st.plotly_chart(fig, use_container_width=True)
                 with col2:
-                    st.subheader("Games Played vs Wins")
+                    st.subheader("Games Played vs Wins", divider=True)
                     fig = go.Figure()
                     fig.add_trace(go.Bar(x=df_players["name"], y=df_players["games_played"], name="Games Played"))
                     fig.add_trace(go.Bar(x=df_players["name"], y=df_players["wins"], name="Wins"))
@@ -1300,7 +1315,7 @@ def statistics_section():
             st.info("No player statistics available yet.")
 
     with tab2:
-        st.subheader("Match History")
+        st.subheader("Match History", divider=True)
         if st.session_state.match_history:
             match_data = []
             for match in st.session_state.match_history:
@@ -1379,7 +1394,7 @@ def statistics_section():
                                 st.rerun()
 
             # Score distribution plot
-            st.subheader("Match Score Distribution")
+            st.subheader("Match Score Distribution", divider=True)
             scores_data = []
             for match in st.session_state.match_history:
                 scores_data.append({
@@ -1395,7 +1410,7 @@ def statistics_section():
             st.info("No match history available yet.")
 
     with tab3:
-        st.subheader("Team Analysis")
+        st.subheader("Team Analysis", divider=True)
         if st.session_state.match_history:
             team_stats = defaultdict(lambda: {"matches": 0, "wins": 0, "total_points": 0})
             for match in st.session_state.match_history:
@@ -1422,7 +1437,7 @@ def statistics_section():
                 })
             df_teams = pd.DataFrame(team_data)
             st.dataframe(df_teams.sort_values(by="Win Rate (%)", ascending=False), use_container_width=True)
-            st.subheader("Team Win Rates")
+            st.subheader("Team Win Rates", divider=True)
             fig = px.bar(df_teams.sort_values(by="Win Rate (%)", ascending=False).head(10),
                           x="Team", y="Win Rate (%)", title="Team Win Rates",
                           labels={"Win Rate (%)": "Win Rate (%)", "Team": "Team Composition"})
@@ -1432,7 +1447,7 @@ def statistics_section():
             st.info("No team statistics available yet.")
 
     with tab4:
-        st.subheader("Player Performance Over Time")
+        st.subheader("Player Performance Over Time", divider=True)
         if st.session_state.match_history:
             player_performance = defaultdict(lambda: {"dates": [], "cumulative_wins": [], "cumulative_points": []})
             for match in st.session_state.match_history:
@@ -1459,11 +1474,11 @@ def statistics_section():
             df_players["win_rate"] = df_players.apply(
                 lambda x: round((x["wins"] / x["games_played"]) * 100, 1) if x["games_played"] > 0 else 0, axis=1
             )
-            st.subheader("Skill Level vs. Performance")
+            st.subheader("Skill Level vs. Performance", divider=True)
             fig = px.box(df_players, x="skill_level", y="win_rate", title="Win Rate Distribution by Skill Level",
                           labels={"win_rate": "Win Rate (%)", "skill_level": "Skill Level"})
             st.plotly_chart(fig, use_container_width=True)
-            st.subheader("Player Consistency")
+            st.subheader("Player Consistency", divider=True)
             df_players["points_std_dev"] = df_players.apply(
                 lambda x: np.std(x["points_scored"]) if x["games_played"] > 1 else 0, axis=1
             )
@@ -1471,7 +1486,7 @@ def statistics_section():
                          labels={"points_std_dev": "Standard Deviation of Points Scored", "name": "Player Name"})
             fig.update_layout(xaxis_tickangle=-45)
             st.plotly_chart(fig, use_container_width=True)
-            st.subheader("Head-to-Head Matchups")
+            st.subheader("Head-to-Head Matchups", divider=True)
             head_to_head = defaultdict(lambda: {"wins": 0, "losses": 0})
             for match in st.session_state.match_history:
                 for pid_a in match["team_a"]:
@@ -1753,14 +1768,50 @@ def upload_to_drive(chat_history=False, match_history=False, files=None):
         return False
 
 def push_to_gdrive(chat_history=False, match_history=False, visitor_count=False):
-    """Push data to Google Drive"""
+    """Push data to Google Drive if enabled in config"""
     try:
+        if not st.session_state.config["upload_to_drive_enabled"]:
+            logger.info("Google Drive upload is disabled in configuration")
+            return
         if visitor_count:
             upload_to_drive(files=["visitor_count.json"])
         else:
             upload_to_drive(chat_history=chat_history, match_history=match_history)
     except Exception as e:
         logger.error(f"Failed to upload to GDrive: {str(e)}")
+
+def load_config():
+    """Load configuration from config.json, initialize with default if not exists"""
+    default_config = {"upload_to_drive_enabled": False}
+    try:
+        if not os.path.exists(CONFIG_FILE):
+            logger.info("Config file not found, creating with default values")
+            with open(CONFIG_FILE, 'w') as f:
+                json.dump(default_config, f, indent=2)
+            return default_config
+        with open(CONFIG_FILE, 'r') as f:
+            config = json.load(f)
+            # Ensure all required keys exist
+            for key, value in default_config.items():
+                if key not in config:
+                    config[key] = value
+            return config
+    except Exception as e:
+        logger.error(f"Error loading config: {str(e)}")
+        return default_config
+
+def save_config(config):
+    """Save configuration to config.json"""
+    try:
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(config, f, indent=2)
+        logger.info("Configuration saved successfully")
+    except Exception as e:
+        logger.error(f"Error saving config: {str(e)}")
+
+# Initialize config in session state
+if 'config' not in st.session_state:
+    st.session_state.config = load_config()
 
 def generate_llm_stats(match_history, players):
     """Generate player skill levels and interesting stats using LLM"""
