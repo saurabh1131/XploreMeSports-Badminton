@@ -1845,7 +1845,7 @@ def generate_llm_stats(match_history, players):
                 "score_b": match["score_b"],
                 "winning_team": match["winning_team"],
                 "notes": match["notes"],
-            } for match in match_history[-30:]
+            } for match in match_history[-50:]
         ]
 
         # Construct LLM prompt with enhanced instructions
