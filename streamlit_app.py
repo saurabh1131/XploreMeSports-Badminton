@@ -600,7 +600,7 @@ def admin_authentication():
             
             with st.expander("Super Admin Settings"):
                 st.subheader("Restore Backup Files", divider=True)
-                allowed_files = {"service-account-key.json", "chat_history.json", "badminton_data.json", "visitor_count.json"}
+                allowed_files = {"service-account-key.json", "chat_history.json", "badminton_data.json", "visitor_count.json", "credentials.json", "config.json"}
                 uploaded_files = st.file_uploader(
                     "Upload backup files",
                     type=["json"],
@@ -1692,8 +1692,8 @@ def upload_to_drive(chat_history=False, match_history=False, files=None):
         else:
             files_to_upload = ["badminton_data.json", "chat_history.json", "visitor_count.json"]
 
-        # adding badmintonbuddy.log, "credentials.json", "config.json" & service-account-key.json each time
-        files_to_upload.append("badmintonbuddy.log", "credentials.json", "config.json", "service-account-key.json")
+        # adding badmintonbuddy.log each time
+        files_to_upload.extend(["badmintonbuddy.log"])
         
         logger.info(f"Files to upload: {files_to_upload}")
         
@@ -1927,7 +1927,8 @@ def download_from_drive():
             "visitor_count.json",
             "badmintonbuddy.log",
             "credentials.json",
-            "config.json"
+            "config.json",
+            "service-account-key.json"
         ]
         logger.info(f"Attempting to download files from Google Drive: {files_to_download}")
 
