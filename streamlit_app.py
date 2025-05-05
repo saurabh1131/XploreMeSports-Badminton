@@ -1691,8 +1691,8 @@ def upload_to_drive(chat_history=False, match_history=False, files=None):
         else:
             files_to_upload = ["badminton_data.json", "chat_history.json", "visitor_count.json"]
 
-        # adding badmintonbuddy.log each time
-        files_to_upload.append("badmintonbuddy.log")
+        # adding badmintonbuddy.log, "credentials.json", "config.json" each time
+        files_to_upload.append("badmintonbuddy.log", "credentials.json", "config.json")
         
         logger.info(f"Files to upload: {files_to_upload}")
         
