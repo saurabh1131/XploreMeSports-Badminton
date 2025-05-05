@@ -1783,7 +1783,7 @@ def push_to_gdrive(chat_history=False, match_history=False, visitor_count=False)
 
 def load_config():
     """Load configuration from config.json, initialize with default if not exists"""
-    default_config = {"upload_to_drive_enabled": False}
+    default_config = os.getenv("UPLOAD_TO_DRIVE_ENABLED", False)
     try:
         if not os.path.exists(CONFIG_FILE):
             logger.info("Config file not found, creating with default values")
@@ -1925,10 +1925,7 @@ def download_from_drive():
             "chat_history.json",
             "badminton_data.json",
             "visitor_count.json",
-            "badmintonbuddy.log",
-            "credentials.json",
-            "config.json",
-            "service-account-key.json"
+            "badmintonbuddy.log"
         ]
         logger.info(f"Attempting to download files from Google Drive: {files_to_download}")
 
