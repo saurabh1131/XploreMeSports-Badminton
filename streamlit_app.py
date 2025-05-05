@@ -1783,7 +1783,7 @@ def push_to_gdrive(chat_history=False, match_history=False, visitor_count=False)
 
 def load_config():
     """Load configuration from config.json, initialize with default if not exists"""
-    default_config = os.getenv("UPLOAD_TO_DRIVE_ENABLED", False)
+    default_config = {"upload_to_drive_enabled": os.getenv("UPLOAD_TO_DRIVE_ENABLED", False)}
     try:
         if not os.path.exists(CONFIG_FILE):
             logger.info("Config file not found, creating with default values")
