@@ -697,6 +697,7 @@ def admin_authentication():
                         st.error(f"Failed to save Gemini configuration: {str(e)}")
                 
                 # Add toggle for enabling/disabling upload to Google Drive
+                st.session_state.config["upload_to_drive_enabled"] = os.getenv("UPLOAD_TO_DRIVE_ENABLED", st.session_state.config["upload_to_drive_enabled"])
                 st.subheader("Google Drive Upload Configuration", divider=True)
                 upload_to_drive_enabled = st.checkbox(
                     "Enable Upload to Google Drive",
