@@ -1772,8 +1772,8 @@ def upload_to_drive(chat_history=False, match_history=False, files=None):
 def push_to_gdrive(chat_history=False, match_history=False, visitor_count=False):
     """Push data to Google Drive if enabled in config"""
     try:
-        st.session_state.config["upload_to_drive_enabled"] = os.getenv("UPLOAD_TO_DRIVE_ENABLED", st.session_state.config["upload_to_drive_enabled"])
-        if not st.session_state.config["upload_to_drive_enabled"]:
+        logger.info(f"os.getenv(UPLOAD_TO_DRIVE_ENABLED ->> {os.getenv('UPLOAD_TO_DRIVE_ENABLED')}")
+        if (not st.session_state.config["upload_to_drive_enabled"]) or os.getenv("UPLOAD_TO_DRIVE_ENABLED", False):
             logger.info("Google Drive upload is disabled in configuration")
             return
         if visitor_count:
