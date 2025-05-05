@@ -25,6 +25,7 @@ from langchain.schema import HumanMessage
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from googleapiclient.http import MediaIoBaseDownload
 
 # Configure logging
 import logging
@@ -1691,8 +1692,8 @@ def upload_to_drive(chat_history=False, match_history=False, files=None):
         else:
             files_to_upload = ["badminton_data.json", "chat_history.json", "visitor_count.json"]
 
-        # adding badmintonbuddy.log, "credentials.json", "config.json" each time
-        files_to_upload.append("badmintonbuddy.log", "credentials.json", "config.json")
+        # adding badmintonbuddy.log, "credentials.json", "config.json" & service-account-key.json each time
+        files_to_upload.append("badmintonbuddy.log", "credentials.json", "config.json", "service-account-key.json")
         
         logger.info(f"Files to upload: {files_to_upload}")
         
@@ -1916,8 +1917,68 @@ Your task is to:
         logger.error(f"Error generating LLM stats: {str(e)}")
         return {"skills": {}, "interesting_stats": []}
 
+
+def download_from_drive():
+    """Download specified files from Google Drive during app startup."""
+    try:
+        files_to_download = [
+            "chat_history.json",
+            "badminton_data.json",
+            "visitor_count.json",
+            "badmintonbuddy.log",
+            "credentials.json",
+            "config.json"
+        ]
+        logger.info(f"Attempting to download files from Google Drive: {files_to_download}")
+
+        drive_service = get_drive_service()
+        if not drive_service:
+            logger.error("Failed to get Google Drive service for download")
+            return False
+
+        target_folder_id = '1u5w1ESII4eCx9CE6LGp-ehPJd3rTriZf'
+        downloaded_files = []
+
+        for file_name in files_to_download:
+            query = f"name = '{file_name}' and '{target_folder_id}' in parents and trashed = false"
+            response = drive_service.files().list(
+                q=query,
+                spaces='drive',
+                fields='files(id, name)'
+            ).execute()
+
+            if response.get('files'):
+                file_id = response['files'][0]['id']
+                logger.info(f"Downloading {file_name} from Google Drive")
+                request = drive_service.files().get_media(fileId=file_id)
+                file_path = os.path.join(os.getcwd(), file_name)
+                
+                with open(file_path, 'wb') as f:
+                    downloader = MediaIoBaseDownload(f, request)
+                    done = False
+                    while not done:
+                        status, done = downloader.next_chunk()
+                        logger.debug(f"Download {file_name}: {int(status.progress() * 100)}%")
+                
+                downloaded_files.append(file_name)
+            else:
+                logger.warning(f"File {file_name} not found on Google Drive, skipping")
+
+        logger.info(f"Successfully downloaded {', '.join(downloaded_files)} from Google Drive")
+        return True
+    except Exception as e:
+        logger.error(f"Google Drive download error: {str(e)}")
+        return False
+    
 def main():
     """Main app"""
+
+    # Download files from Google Drive on startup
+    if 'initial_download_done' not in st.session_state:
+        logger.info("Performing initial download from Google Drive")
+        download_from_drive()
+        st.session_state.initial_download_done = True
+
     load_data()
     if st.session_state.data_updated:
         st.session_state.data_updated = False
