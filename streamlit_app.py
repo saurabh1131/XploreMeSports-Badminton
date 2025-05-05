@@ -1437,13 +1437,21 @@ def statistics_section():
                     "Win Rate (%)": win_rate,
                     "Avg Points": avg_points
                 })
+                
             df_teams = pd.DataFrame(team_data)
+
             st.dataframe(df_teams.sort_values(by="Win Rate (%)", ascending=False), use_container_width=True)
             st.subheader("Team Win Rates", divider=True)
             fig = px.bar(df_teams.sort_values(by="Win Rate (%)", ascending=False).head(10),
                           x="Team", y="Win Rate (%)", title="Team Win Rates",
                           labels={"Win Rate (%)": "Win Rate (%)", "Team": "Team Composition"})
             fig.update_layout(xaxis_tickangle=-45)
+            st.plotly_chart(fig, use_container_width=True)
+
+            fig = go.Figure()
+            fig.add_trace(go.Bar(x=df_teams["Team"], y=df_teams["Matches"], name="Games Played"))
+            fig.add_trace(go.Bar(x=df_teams["Team"], y=df_teams["Wins"], name="Wins"))
+            fig.update_layout(barmode='group', xaxis_tickangle=-45, title="Team Games Played vs Wins")
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("No team statistics available yet.")
